@@ -1,4 +1,4 @@
-import os, sys, time, datetime, json, threading, random, signal
+import os, sys, time, datetime, json, threading, random, signal, base64
 from pathlib import Path
 
 from core.speech import SpeechEngine, STARK_QUOTES
@@ -234,6 +234,7 @@ class Assistant:
         if self._automator is None:
             from tools.automator import Automator
             self._automator = Automator()
+            self._automator.safe_mode = self.safe_mode
             self.brain.register_tools(
                 self._automator.get_tool_definitions(),
                 self._automator.get_handler
@@ -346,6 +347,17 @@ class Assistant:
     def _register_multi_agent(self):
         self._lazy_multi_agent()
 
+    def _obfuscate(self, text):
+        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+        return encoded[::-1]
+
+    def _deobfuscate(self, text):
+        try:
+            decoded = base64.b64decode(text[::-1].encode("ascii")).decode("utf-8")
+            return decoded
+        except Exception:
+            return text
+
     def _save_conversation(self):
         if not self.conversation:
             return
@@ -359,8 +371,9 @@ class Assistant:
                 "safe_mode": self.safe_mode,
                 "messages": self.conversation[-100:]
             }
+            plain = json.dumps(data, indent=2, ensure_ascii=False)
             self.session_file.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False),
+                self._obfuscate(plain),
                 encoding="utf-8"
             )
             self._cleanup_old()
@@ -375,7 +388,9 @@ class Assistant:
                 return False
             session_file = sessions[0]
         try:
-            data = json.loads(session_file.read_text(encoding="utf-8"))
+            raw = session_file.read_text(encoding="utf-8")
+            plain = self._deobfuscate(raw)
+            data = json.loads(plain)
             self.conversation = data.get("messages", [])
             self.session_file = Path(session_file)
             self.speech.speak(f"Loaded conversation with {len(self.conversation)} messages.")
@@ -393,7 +408,9 @@ class Assistant:
         print("\n  Saved conversations:")
         for i, s in enumerate(sessions[:20]):
             try:
-                data = json.loads(s.read_text(encoding="utf-8"))
+                raw = s.read_text(encoding="utf-8")
+                plain = self._deobfuscate(raw)
+                data = json.loads(plain)
                 ts = data.get("timestamp", "unknown")
                 msgs = len(data.get("messages", []))
                 print(f"    {i+1}. {s.name} ({msgs} messages) - {ts}")
@@ -449,11 +466,15 @@ class Assistant:
 
         if any(w in cmd_lower for w in ["safe mode on", "safe mode", "enable safety"]):
             self.safe_mode = True
+            if self._automator:
+                self._automator.safe_mode = True
             self.speech.speak("Safe mode engaged. I'll ask before every command.")
             return True
 
         if any(w in cmd_lower for w in ["safe mode off", "trust me", "trusted mode", "disable safety", "i trust you"]):
             self.safe_mode = False
+            if self._automator:
+                self._automator.safe_mode = False
             self.speech.speak("Safe mode disabled. Running commands without confirmation.")
             return True
 

@@ -10,6 +10,15 @@ DEFAULT_PROFILE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 
 
 class Automator:
+    def __init__(self):
+        self.safe_mode = True
+
+    def _require_confirmation(self, action):
+        if self.safe_mode:
+            raise PermissionError(
+                f"'{action}' requires safe_mode to be disabled. Say 'trust me' or 'safe mode off' first."
+            )
+
     def launch_app(self, name_or_path, **kwargs):
         target = name_or_path
         if not target:
@@ -150,9 +159,12 @@ class Automator:
 
     def send_keys(self, text):
         try:
+            self._require_confirmation("send_keys")
             import pyautogui
             pyautogui.write(text, interval=0.01)
             return f"Typed: {text[:100]}"
+        except PermissionError as e:
+            return str(e)
         except ImportError:
             return "pyautogui not installed. Run: pip install pyautogui"
         except Exception as e:
@@ -160,9 +172,12 @@ class Automator:
 
     def press_key(self, key):
         try:
+            self._require_confirmation("press_key")
             import pyautogui
             pyautogui.press(key)
             return f"Pressed: {key}"
+        except PermissionError as e:
+            return str(e)
         except ImportError:
             return "pyautogui not installed"
         except Exception as e:
@@ -170,9 +185,12 @@ class Automator:
 
     def hotkey(self, *keys):
         try:
+            self._require_confirmation("hotkey")
             import pyautogui
             pyautogui.hotkey(*keys)
             return f"Hotkey: {'+'.join(keys)}"
+        except PermissionError as e:
+            return str(e)
         except ImportError:
             return "pyautogui not installed"
         except Exception as e:
@@ -180,12 +198,15 @@ class Automator:
 
     def click(self, x=None, y=None, button="left"):
         try:
+            self._require_confirmation("click")
             import pyautogui
             if x is not None and y is not None:
                 pyautogui.click(x, y, button=button)
                 return f"Clicked at ({x}, {y})"
             pyautogui.click(button=button)
             return "Clicked"
+        except PermissionError as e:
+            return str(e)
         except ImportError:
             return "pyautogui not installed"
         except Exception as e:
@@ -203,9 +224,12 @@ class Automator:
 
     def scroll(self, clicks):
         try:
+            self._require_confirmation("scroll")
             import pyautogui
             pyautogui.scroll(clicks)
             return f"Scrolled {clicks} clicks"
+        except PermissionError as e:
+            return str(e)
         except ImportError:
             return "pyautogui not installed"
         except Exception as e:
@@ -214,7 +238,8 @@ class Automator:
     def screenshot(self, region=None):
         try:
             import pyautogui
-            path = os.path.join(os.environ["TEMP"], f"friday_screenshot_{int(__import__('time').time())}.png")
+            token = __import__('secrets').token_hex(8)
+            path = os.path.join(os.environ["TEMP"], f"friday_ss_{token}.png")
             if region:
                 im = pyautogui.screenshot(region=region)
             else:
@@ -251,18 +276,7 @@ class Automator:
             ok = notify(title, message, duration)
             if ok:
                 return f"Notification sent: {title}"
-            if is_windows():
-                safe_title = title.replace("'", "''")
-                safe_message = message.replace("'", "''")
-                ps_code = f"New-BurntToastNotification -Text '{safe_title}', '{safe_message}'"
-                encoded = __import__('base64').b64encode(ps_code.encode('utf-16-le')).decode()
-                r = subprocess.run(
-                    ["powershell", "-NoProfile", "-EncodedCommand", encoded],
-                    capture_output=True, text=True, timeout=5
-                )
-                if r.returncode == 0:
-                    return f"Notification sent: {title}"
-            return f"Notification attempted: {title}"
+            return f"Notification: {title}"
         except Exception:
             return "Notification failed"
 

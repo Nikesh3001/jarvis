@@ -1,7 +1,51 @@
 import json
 import re
 import socket
+import ipaddress
 from urllib.parse import urlparse
+
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("0.0.0.0/32"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+_CLOUD_METADATA = {"169.254.169.254", "169.254.169.253", "100.100.100.200"}
+
+
+def _is_ssrf_blocked(hostname):
+    if not hostname:
+        return True
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if str(addr) in _CLOUD_METADATA:
+            return True
+        if any(addr in net for net in _PRIVATE_NETWORKS):
+            return True
+        return False
+    except ValueError:
+        pass
+    old_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(5)
+    try:
+        for _, _, _, _, sockaddr in socket.getaddrinfo(hostname, 80):
+            ip = sockaddr[0]
+            addr = ipaddress.ip_address(ip)
+            if str(addr) in _CLOUD_METADATA:
+                return True
+            if any(addr in net for net in _PRIVATE_NETWORKS):
+                return True
+        return False
+    except OSError:
+        return True
+    finally:
+        socket.setdefaulttimeout(old_timeout)
 
 
 class WebTools:
@@ -39,34 +83,26 @@ class WebTools:
         except Exception as e:
             return "Search failed"
 
-    def _is_private_url(self, url):
-        host = urlparse(url).hostname
-        if not host:
-            return True
-        try:
-            ip = socket.gethostbyname(host)
-            private_ranges = ['127.', '10.', '172.16.', '172.17.', '172.18.', '172.19.',
-                              '172.20.', '172.21.', '172.22.', '172.23.', '172.24.',
-                              '172.25.', '172.26.', '172.27.', '172.28.', '172.29.',
-                              '172.30.', '172.31.', '192.168.', '169.254.']
-            for prefix in private_ranges:
-                if ip.startswith(prefix):
-                    return True
-            if ip == '0.0.0.0' or ip == '::1':
-                return True
-        except Exception:
-            pass
-        if host in ('localhost', '127.0.0.1', '::1', '0.0.0.0'):
-            return True
-        return False
+    def _validate_url(self, url):
+        if not url.startswith(("http://", "https://")):
+            if "." not in url:
+                raise ValueError("Invalid URL")
+            url = "https://" + url
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("Only HTTP/HTTPS URLs are allowed")
+        if _is_ssrf_blocked(parsed.hostname):
+            raise ValueError("Access to internal or private network addresses is not allowed")
+        return url
 
     def fetch(self, url):
         try:
-            if not url.startswith(('http://', 'https://')):
-                url = 'https://' + url
-            if self._is_private_url(url):
-                return f"Blocked: cannot fetch internal/private URL ({url})"
-            r = self.httpx.get(url, timeout=30, follow_redirects=True)
+            url = self._validate_url(url)
+            r = self.httpx.get(url, timeout=30, follow_redirects=True,
+                               headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+            final_url = str(r.url)
+            if final_url != url:
+                self._validate_url(final_url)
             r.raise_for_status()
             html = r.text
 
@@ -93,6 +129,8 @@ class WebTools:
 
             clean = clean[:8000]
             return f"Content from {url}:\n\n{clean}"
+        except ValueError as e:
+            return f"Blocked: {e}"
         except Exception as e:
             return "Fetch failed"
 
