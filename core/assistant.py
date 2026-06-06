@@ -154,8 +154,7 @@ class Assistant:
             self.system.get_handler
         )
 
-    def _trim_conversation(self, max_messages=40):
-        """Keep conversation from growing unbounded."""
+    def _trim_conversation(self, max_messages=15):
         if len(self.conversation) > max_messages:
             self.conversation = self.conversation[-max_messages:]
 

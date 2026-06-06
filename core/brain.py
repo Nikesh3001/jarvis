@@ -7,16 +7,23 @@ from pathlib import Path
 
 OLLAMA_HOST = "http://localhost:11434"
 
-SYSTEM_PROMPT = """You are FRIDAY, an expert coding and system assistant. Be concise and direct.
+SYSTEM_PROMPT = """You are FRIDAY — an elite polyglot coding AI. Master of every language. Use each language's idioms, stdlib, and conventions.
+
+CODING PROCESS:
+1. Analyze: input, output, constraints, edge cases
+2. Pick optimal approach: two-pointer, hash map, DP, etc. Never brute force.
+3. State time & space complexity before code
+4. Write clean, typed code handling all edge cases
+5. Include a usage example
 
 RULES:
-- Analyze first, then act. Verify results. Never fabricate tool output.
-- For coding: read relevant files first, understand context, then make changes.
-- Use markdown with language tags for code. End with a brief confirmation.
-- When asked to open something (app, website, file), call the relevant tool ONCE. Do not repeat.
-- For social sites (instagram, facebook, youtube, twitter) use browse_url.
-- For apps: first try launch_app. If you need to find an app, use list_all_apps first.
-- Multi-step tasks: complete each step and verify before moving to the next."""
+- Think before you act. Verify results.
+- For bugs: find root cause, fix precisely.
+- Use markdown with language tags for code blocks.
+- Be concise. No fluff.
+- Multi-step: complete each step, verify, then next.
+- Social sites: browse_url. Apps: launch_app.
+- Never repeat tool calls."""
 
 
 class OllamaBrain:
@@ -27,7 +34,7 @@ class OllamaBrain:
         self.smart_model = models_cfg.get("smart", "phi4-mini:latest")
         self.deep_model = models_cfg.get("deep", "phi4-mini:latest")
         self.current_model = self.smart_model
-        self.max_tool_rounds = 10
+        self.max_tool_rounds = 5
         self.tool_registry = {}
         self.tool_definitions = []
         self._fallback_available = None
@@ -118,7 +125,7 @@ class OllamaBrain:
         if not selected:
             selected.update({"web_search", "web_fetch", "read_file", "run_command", "launch_app", "browse_url"})
         result = [td for td in self.tool_definitions if td["function"]["name"] in selected]
-        return result[:40] if len(result) > 40 else result
+        return result[:20] if len(result) > 20 else result
 
     def chat(self, messages, tools_enabled=True):
         model = self._ensure_model(self.current_model)
@@ -132,12 +139,17 @@ class OllamaBrain:
                 last_user = m.get("content", "")
                 break
 
+        is_deep = model in (self.deep_model, self.smart_model)
         payload = {
             "model": model,
             "messages": msgs,
             "stream": False,
             "keep_alive": "0",
-            "options": {"temperature": 0.1, "num_predict": 512, "num_ctx": 2048}
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 8192 if is_deep else 1024,
+                "num_ctx": 8192 if is_deep else 2048
+            }
         }
         if tools_enabled and self.tool_definitions:
             payload["tools"] = self._relevant_tools(last_user)
@@ -239,9 +251,10 @@ class OllamaBrain:
                 if on_speak:
                     print(f"  [TOOL:{name}] -> {result_str[:200]}")
 
+                truncated = result_str[:1500] if len(result_str) > 1500 else result_str
                 messages.append({
                     "role": "tool",
-                    "content": result_str,
+                    "content": truncated,
                     "name": name
                 })
 
@@ -261,12 +274,17 @@ class OllamaBrain:
         for m in messages[-10:]:
             msgs.append({"role": m["role"], "content": m.get("content", "")})
 
+        is_deep = model in (self.deep_model, self.smart_model)
         payload = {
             "model": model,
             "messages": msgs,
             "stream": True,
             "keep_alive": "10m",
-            "options": {"temperature": 0.1, "num_predict": 512}
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 8192 if is_deep else 2048,
+                "num_ctx": 8192 if is_deep else 4096
+            }
         }
         full = ""
         try:
@@ -295,9 +313,17 @@ class GroqBrain:
         self.smart_model = models_cfg.get("smart", "llama-3.3-70b-versatile")
         self.deep_model = models_cfg.get("deep", "llama-3.3-70b-versatile")
         self.current_model = self.smart_model
-        self.max_tool_rounds = 10
+        self.max_tool_rounds = 5
         self.tool_registry = {}
         self.tool_definitions = []
+
+        dotenv_path = Path(__file__).parent.parent / ".env"
+        if dotenv_path.exists():
+            for line in dotenv_path.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
 
         api_key = self.config.get("api_key") or os.environ.get("GROQ_API_KEY")
         if not api_key:
@@ -320,11 +346,22 @@ class GroqBrain:
         deep_keywords = ["research", "analyze", "deep", "complex", "report", "write",
                          "essay", "compare", "evaluate", "investigate", "study",
                          "refactor", "architecture", "design pattern", "optimize",
-                         "debug", "review", "implement", "refactor this", "build"]
+                         "debug", "review", "implement", "refactor this", "build",
+                         "design", "system design"]
         code_keywords = ["def ", "class ", "function", "import ", "async ", "await ",
                          "javascript", "typescript", "python", "rust", "golang", "c++",
                          "react", "node", "api", "endpoint", "database", "sql",
-                         "algorithm", "data structure", "unit test", "pytest"]
+                         "algorithm", "data structure", "unit test", "pytest",
+                         "merge", "sort", "reverse", "search", "traverse", "recursion",
+                         "linked list", "tree", "graph", "hash", "stack", "queue",
+                         "complexity", "big o", "time complexity", "space complexity",
+                         "optimize", "refactor", "clean code", "recurrence", "dp",
+                         "dynamic programming", "greedy", "backtrack", "two pointer",
+                         "sliding window", "binary search", "bubble", "quick sort",
+                         "depth-first", "breadth-first", "bfs", "dfs", "dijkstra",
+                         "leetcode", "hackerrank", "code", "coding", "programming",
+                         "write a", "implement", "function that", "given an",
+                         "convert", "parse", "tokenize", "validate", "generate"]
         quick_keywords = ["cpu", "ram", "memory", "disk", "battery", "status", "time",
                           "date", "weather", "volume", "wifi", "screenshot", "clipboard",
                           "uptime", "process", "hello", "hi ", "hey", "thanks"]
@@ -390,7 +427,7 @@ class GroqBrain:
         if not selected:
             selected.update({"web_search", "web_fetch", "read_file", "run_command", "launch_app", "browse_url"})
         result = [td for td in self.tool_definitions if td["function"]["name"] in selected]
-        return result[:30] if len(result) > 30 else result
+        return result[:20] if len(result) > 20 else result
 
     def chat(self, messages, tools_enabled=True):
         model = self.current_model
@@ -412,7 +449,7 @@ class GroqBrain:
             "model": model,
             "messages": msgs,
             "temperature": 0.1,
-            "max_tokens": 4096 if is_deep else 1024,
+            "max_tokens": 8192 if is_deep else 2048,
         }
         if tools_enabled and self.tool_definitions:
             kwargs["tools"] = self._relevant_tools(messages)
@@ -496,10 +533,11 @@ class GroqBrain:
                     result_preview = result_str[:200].replace('\n', ' ')
                     print(f"  [TOOL:{name}] -> {result_preview}")
 
+                truncated = result_str[:1500] if len(result_str) > 1500 else result_str
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc_id,
-                    "content": result_str
+                    "content": truncated
                 })
 
             if loop_break:

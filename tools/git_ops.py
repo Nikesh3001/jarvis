@@ -17,8 +17,8 @@ class GitOps:
             return "Git command timed out"
         except FileNotFoundError:
             return "Git is not installed or not in PATH"
-        except Exception as e:
-            return f"Git error: {e}"
+        except Exception:
+            return "Git command failed"
 
     def git_status(self):
         return self._run("status")
@@ -59,6 +59,23 @@ class GitOps:
     def git_remote(self):
         return self._run("remote", "-v")
 
+    def git_remote_add(self, name, url):
+        return self._run("remote", "add", name, url)
+
+    def git_commit_all(self, message):
+        r1 = self._run("add", "-A")
+        r2 = self._run("commit", "-m", message)
+        return f"{r1}\n{r2}"
+
+    def git_push_upstream(self, remote="origin", branch="main"):
+        return self._run("push", "-u", remote, branch)
+
+    def git_pull_rebase(self, remote="origin", branch="main"):
+        return self._run("pull", "--rebase", remote, branch)
+
+    def git_branch_rename(self, new_name="main"):
+        return self._run("branch", "-M", new_name)
+
     def git_reset(self, target="HEAD"):
         return self._run("reset", target)
 
@@ -67,24 +84,33 @@ class GitOps:
             {"type": "function", "function": {"name": "git_status", "description": "Working tree status", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "git_diff", "description": "Unstaged changes", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "git_log", "description": "Commit history", "parameters": {"type": "object", "properties": {"count": {"type": "integer", "description": "Count", "default": 10}}}}},
-            {"type": "function", "function": {"name": "git_commit", "description": "Commit with message", "parameters": {"type": "object", "properties": {"message": {"type": "string", "description": "Msg"}}, "required": ["message"]}}},
-            {"type": "function", "function": {"name": "git_add", "description": "Stage files", "parameters": {"type": "object", "properties": {"paths": {"type": "string", "description": "Paths", "default": "."}}, "required": []}}},
+            {"type": "function", "function": {"name": "git_commit", "description": "Commit staged changes", "parameters": {"type": "object", "properties": {"message": {"type": "string", "description": "Commit message"}}, "required": ["message"]}}},
+            {"type": "function", "function": {"name": "git_add", "description": "Stage files for commit", "parameters": {"type": "object", "properties": {"paths": {"type": "string", "description": "File paths or '.' for all", "default": "."}}, "required": []}}},
+            {"type": "function", "function": {"name": "git_commit_all", "description": "Stage ALL changes and commit in one step", "parameters": {"type": "object", "properties": {"message": {"type": "string", "description": "Commit message"}}, "required": ["message"]}}},
             {"type": "function", "function": {"name": "git_push", "description": "Push to remote", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "git_push_upstream", "description": "First push to set upstream and push", "parameters": {"type": "object", "properties": {"remote": {"type": "string", "description": "Remote name", "default": "origin"}, "branch": {"type": "string", "description": "Branch name", "default": "main"}}}}},
             {"type": "function", "function": {"name": "git_pull", "description": "Pull from remote", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "git_pull_rebase", "description": "Pull with rebase to avoid merge commits", "parameters": {"type": "object", "properties": {"remote": {"type": "string", "description": "Remote", "default": "origin"}, "branch": {"type": "string", "description": "Branch", "default": "main"}}}}},
             {"type": "function", "function": {"name": "git_clone", "description": "Clone a repo", "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "URL"}, "directory": {"type": "string", "description": "Target dir"}}, "required": ["url"]}}},
             {"type": "function", "function": {"name": "git_branch", "description": "List branches", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "git_branch_rename", "description": "Rename current branch", "parameters": {"type": "object", "properties": {"new_name": {"type": "string", "description": "New name", "default": "main"}}}}},
             {"type": "function", "function": {"name": "git_checkout", "description": "Switch branch", "parameters": {"type": "object", "properties": {"branch": {"type": "string", "description": "Branch"}}, "required": ["branch"]}}},
-            {"type": "function", "function": {"name": "git_init", "description": "Init repository", "parameters": {"type": "object", "properties": {}}}},
-            {"type": "function", "function": {"name": "git_remote", "description": "Show remotes", "parameters": {"type": "object", "properties": {}}}},
-            {"type": "function", "function": {"name": "git_reset", "description": "Reset to target", "parameters": {"type": "object", "properties": {"target": {"type": "string", "description": "Target", "default": "HEAD"}}}}},
+            {"type": "function", "function": {"name": "git_init", "description": "Initialize new git repository", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "git_remote", "description": "List remotes", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "git_remote_add", "description": "Add a remote URL", "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "Remote name (e.g. origin)"}, "url": {"type": "string", "description": "Remote URL"}}, "required": ["name", "url"]}}},
+            {"type": "function", "function": {"name": "git_reset", "description": "Reset to target commit", "parameters": {"type": "object", "properties": {"target": {"type": "string", "description": "Target", "default": "HEAD"}}}}},
         ]
 
     def get_handler(self, name):
         handlers = {
             "git_status": self.git_status, "git_diff": self.git_diff, "git_log": self.git_log,
-            "git_commit": self.git_commit, "git_add": self.git_add, "git_push": self.git_push,
-            "git_pull": self.git_pull, "git_clone": self.git_clone, "git_branch": self.git_branch,
-            "git_checkout": self.git_checkout, "git_init": self.git_init, "git_remote": self.git_remote,
+            "git_commit": self.git_commit, "git_add": self.git_add, "git_commit_all": self.git_commit_all,
+            "git_push": self.git_push, "git_push_upstream": self.git_push_upstream,
+            "git_pull": self.git_pull, "git_pull_rebase": self.git_pull_rebase,
+            "git_clone": self.git_clone, "git_branch": self.git_branch,
+            "git_branch_rename": self.git_branch_rename,
+            "git_checkout": self.git_checkout, "git_init": self.git_init,
+            "git_remote": self.git_remote, "git_remote_add": self.git_remote_add,
             "git_reset": self.git_reset,
         }
         return handlers.get(name)
