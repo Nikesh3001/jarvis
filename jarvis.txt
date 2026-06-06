@@ -1,0 +1,386 @@
+================================================================================
+  FRIDAY v3.5.0 — ARCHITECTURE DOCUMENT
+  Female Replacement Intelligent Digital Assistant Youth
+  Stark Industries  |  Mark LXXXVI Protocol  |  Arc Reactor Powered
+================================================================================
+
+1. PROJECT STRUCTURE
+2. SYSTEM ARCHITECTURE
+3. BRAIN (LLM LAYER)
+4. ASSISTANT (ORCHESTRATOR)
+5. SPEECH ENGINE
+6. TOOL MODULES
+7. MEMORY SYSTEM
+8. AGENT SYSTEM
+9. CONFIGURATION
+10. DATA FLOW
+11. KEY DESIGN PATTERNS
+12. KNOWN ISSUES & TODOS
+
+================================================================================
+1. PROJECT STRUCTURE
+================================================================================
+
+C:\Users\nikes\jarvis\
+  jarvis.py                        # Entry point — CLI arg parsing, mode selection
+  config.json                      # Provider (groq/ollama), API key, model config
+  requirements.txt                 # Python dependencies
+  .gitignore
+
+  core/
+    assistant.py                   # Orchestrator: init, command routing, conversation
+    brain.py                       # OllamaBrain + GroqBrain (LLM backends)
+    speech.py                      # Speech-to-text + text-to-speech engine
+    monitor.py                     # Background resource monitor (CPU/RAM/disk)
+    multi_agent.py                 # Multi-agent dev pipeline (6 roles)
+
+  tools/
+    system.py                      # 28 system tools (CPU, RAM, disk, network, etc.)
+    automator.py                   # 18 automation tools (launch, browse, keyboard, etc.)
+    file_editor.py                 # 11 file editing tools (read/write/edit/find/grep)
+    git_ops.py                     # 13 git tools (status/commit/push/pull/clone/etc.)
+    files.py                       # 3 file reading tools (PDF/DOCX/OCR/spreadsheets)
+    planner.py                     # 8 planning tools (create/execute/track plans)
+    security.py                    # 5 security tools (firewall/ports/updates)
+    news.py                        # 4 news/wiki tools (headlines/search/summary)
+    scraper.py                     # 3 scraping tools (extract/links/status)
+    stocks.py                      # 3 stock tools (price/search/market)
+    shell.py                       # 3 shell tools (cmd/powershell/script)
+    code_interpreter.py            # 1 code sandbox (safe Python execution)
+    web.py                         # 2 web tools (search/fetch)
+
+  memory/
+    vector_store.py                # ChromaDB persistent vector storage
+    conversation.py                # CRUD wrapper for long-term memory
+
+  agent/
+    deep_research.py               # Multi-step web research agent
+
+  config/
+    chrome_default_profile.json    # Default Chrome profile name
+
+  conversations/                   # Saved session JSON files
+  memory_store/                    # ChromaDB persistent data
+  plans/                           # Saved plan files
+  __pycache__/                     # Compiled bytecode
+
+================================================================================
+2. SYSTEM ARCHITECTURE
+================================================================================
+
+                          jarvis.py (Entry Point)
+                                |
+                    core/assistant.py (Orchestrator)
+                   /        |         |          \
+                  /         |         |           \
+        core/brain.py  core/speech.py  monitor.py  tools/*.py (13 modules)
+         /       \       /       \                   |           |
+    OllamaBrain  GroqBrain  STT    TTS           memory/     agent/
+    (local LLM)  (cloud     (Google  (pyttsx3    VectorStore  DeepResearch
+                 Groq API)   SR)     Zira)       ChromaDB     Agent
+
+LAYERS:
+  Layer 1: Entry — jarvis.py parses CLI args (-t text, -c continuous)
+  Layer 2: Orchestration — Assistant class wires everything together
+  Layer 3: AI — OllamaBrain / GroqBrain provide LLM + tool execution
+  Layer 4: Tools — 13 modules, ~108 tool definitions, lazy-loaded
+  Layer 5: Memory — ChromaDB vector store for persistent recall
+  Layer 6: Agents — Specialized multi-step agents (research, dev pipeline)
+
+================================================================================
+3. BRAIN (LLM LAYER) — core/brain.py
+================================================================================
+
+3.1 OllamaBrain (lines 34-289)
+  Backend: Local Ollama API (http://localhost:11434)
+  Models: Configurable fast/smart/deep (default: phi4-mini)
+  Chat: POST /api/chat with streaming response
+  Tool calling: Parses [TOOL]name(args)[/TOOL] tags from text output
+  Tool loop: Multi-round execution with dedup detection
+
+3.2 GroqBrain (lines 292-526)
+  Backend: Groq Cloud API (groq Python SDK)
+  Models: Configurable fast/smart/deep (default: llama-3.1-8b-instant / 70b)
+  Chat: client.chat.completions.create() with native tool calling
+  Tool loop: Multi-round execution with set-based dedup
+
+3.3 Shared Features (both brains)
+  SYSTEM_PROMPT: Concise FRIDAY persona with tool descriptions
+  select_model(): Keyword-based model routing (deep/code -> 70B, quick -> 8B)
+  _relevant_tools(): Keyword-map filters tools (40+ categories) to stay under token limits
+  chat_with_tools(): Up to 10 rounds, executes tool calls, feeds results back
+  Duplicate detection: Set of (tool_name + JSON args) prevents infinite loops
+  Fallback: No-keyword-match returns default tools (web_search, fetch, read, run, launch, browse)
+
+3.4 Keyword Map Categories
+  system: cpu/memory/disk/battery/network/process/volume/wifi/clipboard/etc.
+  shell: cmd/command/terminal/powershell/run/execute/script
+  file: read/write/edit/list/move/copy/delete/mkdir/find/grep
+  web: search/google/bing/fetch/url/http
+  git: commit/push/pull/clone/branch/repo
+  browser: chrome/firefox/edge/open/launch/app/instagram/facebook/youtube
+  code: python/script/run/sandbox
+  memory: remember/recall/forget
+  plan: task/step/goal/objective
+  news: headline/wikipedia/current event
+  stock: market/price/trade
+  scrape: extract/link
+  security: firewall/port/audit
+  research: deep/analyze
+  ocr: image/spreadsheet
+
+================================================================================
+4. ASSISTANT (ORCHESTRATOR) — core/assistant.py
+================================================================================
+
+4.1 Assistant class (lines 71-764)
+  __init__(): Loads config, inits brain + speech, registers core tools
+  _init_brain(): Returns GroqBrain or OllamaBrain based on config provider
+  _register_*(): 15 lazy-loading wrappers for tool modules
+  _handle_command(): Built-in command router (~20 commands)
+  _process_with_ai(): Delegates to brain.chat_with_tools()
+  run(): Voice mode with wake-word "Hey Friday"
+  run_text(): Text mode REPL loop
+  shutdown(): Graceful shutdown with session save
+
+4.2 Built-in Commands
+  stop/shutdown/bye/goodbye — Exit
+  sleep/standby — Deactivate
+  stark mode / safe mode — Toggle permission mode
+  suit status — System info (uptime, CPU, RAM)
+  help — Full command list
+  whoami — FRIDAY persona response
+  joke/tell me a joke — Random joke
+  list models — Show available models
+  save/load/list conversations — Session management
+  clear history — Reset conversation
+  enable/disable news/monitor — Feature toggles
+  emergency cleanup — Free memory
+  Everything else -> AI processing
+
+4.3 ResourceGovernor (lines 44-68)
+  Background thread monitoring RAM every 30s
+  Triggers emergency cleanup if < 1GB free
+
+================================================================================
+5. SPEECH ENGINE — core/speech.py
+================================================================================
+
+5.1 SpeechEngine class (lines 45-222)
+  STT: Google Speech Recognition (speech_recognition library)
+  TTS: pyttsx3 with Microsoft Zira (female) voice, rate=220
+  Wake word: "hey friday", "friday", "ok friday", "hello friday"
+  Async TTS: Background worker thread with queue
+  Noise calibration: Dynamic ambient noise adjustment
+
+================================================================================
+6. TOOL MODULES — tools/
+================================================================================
+
+6.1 system.py — SystemTools (28 tools)
+  get_cpu, get_memory, get_disk, get_battery, get_network
+  get_processes, kill_process, start_process
+  take_screenshot, get_clipboard, set_clipboard
+  get_volume, set_volume, mute_volume
+  media_play_pause, media_next, media_prev
+  list_wifi, wifi_status, list_windows, focus_window
+  lock_workstation, get_system_info
+  get_installed_software, get_startup_programs
+  get_services, get_system_uptime, get_active_connections
+
+6.2 automator.py — Automator (18 tools)
+  launch_app (with Chrome + chrome://newtab support)
+  open_file, open_folder
+  browse_url (opens any URL in Chrome as new tab)
+  search_web (Google search in Chrome)
+  set_default_profile, get_default_profile
+  send_keys, press_key, hotkey
+  click, mouse_position, scroll
+  screenshot, get_clipboard, set_clipboard
+  notify, list_apps
+  Chrome profile management (list/resolve/save/load)
+
+6.3 file_editor.py — FileEditor (11 tools)
+  read_file (via FileEditor), write_file, edit_file, append_file
+  list_files, move_file, copy_file, delete_file
+  create_directory, find_files, grep_files, file_info
+
+6.4 git_ops.py — GitOps (13 tools)
+  git_status, git_diff, git_log, git_commit, git_add
+  git_push, git_pull, git_clone, git_branch
+  git_checkout, git_init, git_remote, git_reset
+
+6.5 files.py — FileTools (3 tools)
+  read_file (multi-format: PDF, DOCX, code, images, spreadsheets)
+  ocr_image (Tesseract OCR), read_spreadsheet (CSV/Excel)
+
+6.6 planner.py — Planner (8 tools)
+  create_plan, execute_step, complete_step, fail_step
+  get_progress, update_plan, list_plans, load_plan
+
+6.7 security.py — SecurityTool (5 tools)
+  check_firewall, check_open_ports, check_listeners
+  check_security_updates, security_best_practices
+
+6.8 news.py — NewsTool (4 tools)
+  wikipedia_summary, wikipedia_search
+  get_daily_news, get_current_events
+
+6.9 scraper.py — WebScraper (3 tools)
+  scrape_url, extract_links, check_site_status
+
+6.10 stocks.py — StockTool (3 tools)
+  get_stock_price, search_stock, get_market_summary
+
+6.11 shell.py — ShellCommander (3 tools)
+  run_command, run_powershell, run_script
+
+6.12 code_interpreter.py — CodeInterpreter (1 tool)
+  run_code: Sandboxed Python — blocks os/subprocess/socket/etc.,
+  allows safe builtins + approved modules (hashlib, json, math, etc.)
+
+6.13 web.py — WebTools (2 tools)
+  search (DuckDuckGo), fetch (URL with readability extraction)
+
+  multi_agent.py — MultiAgentSystem (4 tools via core/)
+  run_phase, run_team, design_architecture, research_topic
+
+  conversation.py — ConversationMemory (4 tools via memory/)
+  remember, recall, list_memories, forget
+
+  deep_research.py — DeepResearchAgent (1 tool via agent/)
+  deep_research (multi-step iterative web research)
+
+================================================================================
+7. MEMORY SYSTEM — memory/
+================================================================================
+
+7.1 VectorStore (ChromDB wrapper) — memory/vector_store.py
+  Backend: chromadb.PersistentClient at memory_store/
+  Collection: "friday_memory"
+  Operations: add (upsert), search (semantic), get_all_keys, delete
+  Storage format: ChromaDB persistent (SQLite + HNSW index)
+
+7.2 ConversationMemory (CRUD layer) — memory/conversation.py
+  remember(key, value): Store as document with key metadata
+  recall(query): Semantic search returning top 3 matches
+  list_memories(): List all stored keys
+  forget(key): Delete by key
+
+================================================================================
+8. AGENT SYSTEM — agent/ + core/multi_agent.py
+================================================================================
+
+8.1 DeepResearchAgent (agent/deep_research.py)
+  Method: Uses brain.chat_with_tools() with RESEARCH_PROMPT
+  Flow: Plan -> Search -> Synthesize -> Refine -> Report
+  Model: Forces deep model for complex research
+
+8.2 MultiAgentSystem (core/multi_agent.py)
+  6 roles in pipeline:
+    1. Analyst — Requirements analysis
+    2. Architect — System design
+    3. Developer — Implementation
+    4. Reviewer — Code review
+    5. Tester — Test generation
+    6. Security — Security audit
+  Each role has its own persona prompt
+  Output: Full pipeline report with all phase results
+
+================================================================================
+9. CONFIGURATION
+================================================================================
+
+9.1 config.json
+  provider: "groq" | "ollama" (switches brain backend)
+  api_key: Groq API key (only used for groq provider)
+  models.fast: Quick model (llama-3.1-8b-instant)
+  models.smart: Default model (llama-3.3-70b-versatile)
+  models.deep: Complex tasks model (llama-3.3-70b-versatile)
+
+9.2 chrome_default_profile.json
+  profile: Default Chrome profile name for browser operations
+
+================================================================================
+10. DATA FLOW
+================================================================================
+
+USER -> Wake word detected (voice) or text input
+  -> Assistant._handle_command()
+    -> Built-in? -> Execute directly
+    -> AI? -> _process_with_ai()
+      -> Brain.select_model() -> fast/smart/deep
+      -> Brain._relevant_tools() -> filter tools by keywords
+      -> Brain.chat(conversation + tools) -> LLM response
+        -> Tool calls? -> Execute handler -> Append result -> Repeat
+        -> Text? -> Return to user
+      -> Up to 10 rounds, dedup detection breaks loops
+    -> SpeechEngine.speak() (TTS output)
+  -> Conversation saved to conversations/ (JSON)
+
+================================================================================
+11. KEY DESIGN PATTERNS
+================================================================================
+
+1. DUAL BRAIN: GroqBrain (cloud, fast, 70B) and OllamaBrain (local, fallback)
+   — Switched via config.json provider field
+
+2. LAZY LOADING: All 13 tool modules + monitoring loaded on first use
+   — _lazy_*() methods reduce startup time
+
+3. TOOL REGISTRY: Each module exposes get_tool_definitions() + get_handler(name)
+   — OpenAI-compatible function calling schema
+
+4. KEYWORD FILTERING: Both model selection AND tool filtering use keyword maps
+   — Prevents token limit issues with 108 tool definitions
+
+5. DUPLICATE DETECTION: Set-based tracking of (tool_name + sorted JSON args)
+   — Prevents infinite loops from repeated tool calls
+
+6. MULTI-ROUND EXECUTION: chat_with_tools() loops up to 10 rounds
+   — Model can chain multiple tool calls per user request
+
+7. STARK PERSONA: Full Iron Man theming — arc reactor, Mark 86, FRIDAY quotes
+   — Enhances user engagement
+
+8. SAFE SANDBOX: Code execution blocks dangerous modules
+   — Wrapped __import__ allows only approved imports
+
+9. CHROME PROFILE MANAGEMENT: Multi-profile support with persistent storage
+   — launch_app opens chrome://newtab; browse_url opens URLs as new tabs
+
+10. FALLBACK CHAIN: launch_app -> Start-Process -> https://URL via Chrome
+    — Handles app names, file paths, and website names transparently
+
+================================================================================
+12. KNOWN ISSUES & TODOS
+================================================================================
+
+MEDIUM PRIORITY:
+  - _list_models() fixed for both Groq and Ollama providers
+  - Timezone fixed — uses local time instead of hardcoded IST
+  - Greeting detection fixed — checks first word, not exact match
+
+LOW PRIORITY:
+  - code_interpreter.py line 47-48: Writes code to temp file that's never read
+  - code_interpreter.py line 20: Substring import check can false-positive
+  - brain.py OllamaBrain: Empty tools [] when no keywords match — some models reject
+
+FIXED IN THIS SESSION:
+  - Unicode emoji crash in speech.py (replaced with ASCII)
+  - Box-drawing chars in assistant.py shutdown (replaced with ASCII)
+  - Groq token limit exceeded (tool filtering implemented)
+  - Code sandbox __import__ not found (safe wrapper added)
+  - Duplicate tool-call loops (set-based detection)
+  - _list_models() crash when provider is Groq
+  - Hardcoded IST timezone
+  - Too-strict greeting detection
+  - Clipboard/image error when opening Chrome (removed screenshot from browser tools)
+  - Multiple Chrome launches (fixed dedup to use set)
+  - Non-functional new tab page (changed --new-tab to chrome://newtab)
+  - Auto-profile loading forced new Chrome window (removed default profile loading)
+  - Unknown website names fail (launch_app falls back to https:// URL via Chrome)
+
+================================================================================
+END OF JARVIS ARCHITECTURE DOCUMENT
+================================================================================

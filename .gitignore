@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+conversations/
+memory_store/
+.env
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+.DS_Store
+*.log
