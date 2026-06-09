@@ -1,58 +1,14 @@
 import json
 import re
-import socket
-import ipaddress
-from urllib.parse import urlparse
 
-_PRIVATE_NETWORKS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("0.0.0.0/32"),
-    ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fc00::/7"),
-    ipaddress.ip_network("fe80::/10"),
-]
-
-_CLOUD_METADATA = {"169.254.169.254", "169.254.169.253", "100.100.100.200"}
-
-
-def _is_ssrf_blocked(hostname):
-    if not hostname:
-        return True
-    try:
-        addr = ipaddress.ip_address(hostname)
-        if str(addr) in _CLOUD_METADATA:
-            return True
-        if any(addr in net for net in _PRIVATE_NETWORKS):
-            return True
-        return False
-    except ValueError:
-        pass
-    old_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(5)
-    try:
-        for _, _, _, _, sockaddr in socket.getaddrinfo(hostname, 80):
-            ip = sockaddr[0]
-            addr = ipaddress.ip_address(ip)
-            if str(addr) in _CLOUD_METADATA:
-                return True
-            if any(addr in net for net in _PRIVATE_NETWORKS):
-                return True
-        return False
-    except OSError:
-        return True
-    finally:
-        socket.setdefaulttimeout(old_timeout)
+from core.ssrf import validate_url, safe_httpx_get
 
 
 class WebTools:
     def __init__(self):
         self._ddgs = None
         self._httpx = None
-        self._readability = None
+        self._client = None
 
     @property
     def ddgs(self):
@@ -67,6 +23,15 @@ class WebTools:
             import httpx
             self._httpx = httpx
         return self._httpx
+
+    def _get_client(self):
+        if self._client is None:
+            self._client = self.httpx.Client(
+                follow_redirects=False,
+                timeout=30,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
+        return self._client
 
     def search(self, query, max_results=5):
         try:
@@ -83,28 +48,13 @@ class WebTools:
         except Exception as e:
             return "Search failed"
 
-    def _validate_url(self, url):
-        if not url.startswith(("http://", "https://")):
-            if "." not in url:
-                raise ValueError("Invalid URL")
-            url = "https://" + url
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            raise ValueError("Only HTTP/HTTPS URLs are allowed")
-        if _is_ssrf_blocked(parsed.hostname):
-            raise ValueError("Access to internal or private network addresses is not allowed")
-        return url
-
     def fetch(self, url):
         try:
-            url = self._validate_url(url)
-            r = self.httpx.get(url, timeout=30, follow_redirects=True,
-                               headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
-            final_url = str(r.url)
-            if final_url != url:
-                self._validate_url(final_url)
-            r.raise_for_status()
-            html = r.text
+            url = validate_url(url)
+            client = self._get_client()
+            response = safe_httpx_get(url, client)
+            response.raise_for_status()
+            html = response.text
 
             try:
                 from readability import Document

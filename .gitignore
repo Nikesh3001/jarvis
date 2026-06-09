@@ -5,6 +5,7 @@ __pycache__/
 conversations/
 memory_store/
 .env
+.conversation_key
 *.egg-info/
 dist/
 build/
@@ -12,3 +13,5 @@ venv/
 .venv/
 .DS_Store
 *.log
+
+config.json

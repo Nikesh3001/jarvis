@@ -12,18 +12,29 @@ FORBIDDEN_MODULES = {
     "multiprocessing", "threading", "importlib", "pkgutil", "pdb",
     "inspect", "code", "codeop", "compileall", "py_compile",
     "webbrowser", "antigravity", "turtle",
+    "pathlib", "glob", "fnmatch",  # File system access
+    "urllib", "urllib2", "httplib",  # Network access
+    "_io", "codecs",  # Low-level I/O
 }
 
 FORBIDDEN_STRINGS = [
     "__import__", "__builtins__", "__subclasses__",
+    "__class__", "__bases__", "__mro__", "__base__",
+    "__globals__", "__code__", "__closure__", "__func__",
     "open(", "exec(", "eval(", "compile(",
-    "getattr(__", "setattr(__", "delattr(__",
+    "getattr(", "setattr(", "delattr(",
     "os.", "subprocess.", "shutil.", "socket.", "ctypes.",
+    "pathlib.", "glob.",  # File system access
+    "__import__",  # Dynamic imports
+    "globals(", "locals(",  # Scope inspection
+    "vars(",  # Variable inspection
 ]
 
 DANGEROUS_NAMES = {
     "exec", "eval", "compile", "__import__", "open",
     "input", "breakpoint", "help",
+    "getattr", "setattr", "delattr",  # Attribute manipulation
+    "globals", "locals", "vars",  # Scope inspection
 }
 
 
@@ -57,9 +68,8 @@ def _check_code_safety(code):
             if isinstance(node.value, ast.Name) and node.value.id in ("os", "subprocess", "shutil", "socket", "ctypes"):
                 raise SandboxError(f"Access to '{node.value.id}.{node.attr}' is not allowed")
 
-    for forbidden in FORBIDDEN_STRINGS:
-        if forbidden in code:
-            raise SandboxError(f"Code contains forbidden pattern: '{forbidden}'")
+    return tree
+
 
 
 class CodeInterpreter:
@@ -73,7 +83,7 @@ class CodeInterpreter:
             return "Code too long (max 10000 chars)."
 
         try:
-            _check_code_safety(code)
+            tree = _check_code_safety(code)
         except SandboxError as e:
             return f"Sandbox blocked: {e}"
 
@@ -87,7 +97,6 @@ class CodeInterpreter:
             "copy", "pprint", "reprlib",
             "array", "queue",
             "hashlib", "uuid", "secrets",
-            "pathlib", "glob",
             "statistics",
         }
 
@@ -106,9 +115,9 @@ class CodeInterpreter:
             "dict": dict, "divmod": divmod,
             "enumerate": enumerate,
             "filter": filter, "float": float, "format": format, "frozenset": frozenset,
-            "hasattr": hasattr, "hash": hash, "hex": hex,
+            "hash": hash, "hex": hex,
             "id": id, "int": int, "isinstance": isinstance,
-            "issubclass": issubclass, "iter": iter,
+            "iter": iter,
             "len": len, "list": list, "map": map,
             "max": max, "min": min,
             "next": next, "object": object, "oct": oct, "ord": ord,
@@ -129,7 +138,7 @@ class CodeInterpreter:
         stderr_capture = io.StringIO()
 
         try:
-            compiled = compile(code, "<sandbox>", "exec")
+            compiled = compile(tree, "<sandbox>", "exec")
             with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
                 exec(compiled, restricted_globals, {})
 

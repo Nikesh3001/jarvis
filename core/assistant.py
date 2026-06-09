@@ -1,8 +1,70 @@
-import os, sys, time, datetime, json, threading, random, signal, base64
+import os, sys, time, datetime, json, threading, random, base64, hashlib, shutil
 from pathlib import Path
 
 from core.speech import SpeechEngine, STARK_QUOTES
 from tools.system import SystemTools
+
+
+_ENCRYPTION_KEY = None
+
+
+def _get_encryption_key():
+    global _ENCRYPTION_KEY
+    if _ENCRYPTION_KEY is not None:
+        return _ENCRYPTION_KEY
+    key_file = Path(__file__).parent.parent / ".conversation_key"
+    if key_file.exists():
+        try:
+            _ENCRYPTION_KEY = base64.b64decode(key_file.read_text().strip())
+            return _ENCRYPTION_KEY
+        except Exception:
+            pass
+    key = os.urandom(32)
+    _ENCRYPTION_KEY = key
+    try:
+        key_file.write_text(base64.b64encode(key).decode("ascii"))
+        # Restrict file permissions to owner-only
+        try:
+            import stat
+            key_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # owner read/write only
+        except (OSError, AttributeError):
+            pass
+    except Exception:
+        pass
+    return key
+
+
+def _encrypt_data(data):
+    try:
+        from cryptography.fernet import Fernet
+        key = _get_encryption_key()
+        fernet_key = base64.urlsafe_b64encode(hashlib.sha256(key).digest())
+        f = Fernet(fernet_key)
+        return f.encrypt(data.encode("utf-8")).decode("ascii")
+    except ImportError:
+        import sys
+        print("  [SECURITY] WARNING: cryptography not installed. Using base64 encoding (not encrypted).", file=sys.stderr)
+        print("  [SECURITY] Install: pip install cryptography", file=sys.stderr)
+        return base64.b64encode(data.encode("utf-8")).decode("ascii")
+
+
+def _decrypt_data(data):
+    try:
+        from cryptography.fernet import Fernet, InvalidToken
+        key = _get_encryption_key()
+        fernet_key = base64.urlsafe_b64encode(hashlib.sha256(key).digest())
+        f = Fernet(fernet_key)
+        return f.decrypt(data.encode("ascii")).decode("utf-8")
+    except ImportError:
+        try:
+            return base64.b64decode(data.encode("ascii")).decode("utf-8")
+        except Exception:
+            return data
+    except InvalidToken:
+        try:
+            return base64.b64decode(data.encode("ascii")).decode("utf-8")
+        except Exception:
+            return data
 
 VERSION = "3.5.0"
 MARK_NUMBER = 86
@@ -24,20 +86,19 @@ ARC_REACTOR = r"""
 
 BANNER = r"""
 {arc}
-  ╔═══════════════════════════════════════════════════════════════╗
-  ║                                                               ║
-  ║     ███████╗██████╗  ██╗██████╗  █████╗ ██╗   ██╗           ║
-  ║     ██╔════╝██╔══██╗██║██╔══██╗██╔══██╗╚██╗ ██╔╝           ║
-  ║     █████╗  ██████╔╝██║██║  ██║███████║ ╚████╔╝            ║
-  ║     ██╔══╝  ██╔══██╗██║██║  ██║██╔══██║  ╚██╔╝             ║
-  ║     ██║     ██║  ██║██║██████╔╝██║  ██║   ██║              ║
-  ║     ╚═╝     ╚═╝  ╚═╝╚═╝╚═════╝ ╚═╝  ╚═╝   ╚═╝              ║
-  ║                                                               ║
-  ║   Female Replacement Intelligent Digital Assistant Youth       ║
-  ║   Stark Industries  •  Terminal Edition  •  v{version}          ║
-  ║   Mark {mark} Protocol  •  Arc Reactor Powered                ║
-  ║                                                               ║
-  ╚═══════════════════════════════════════════════════════════════╝
+  +=============================================================+
+  |                                                             |
+  |      _____ ____  ___ ____    _ __   __                       |
+  |     |  ___|  _ \|_ _|  _ \  / \ \ / /                       |
+  |     | |_  | |_) || || | | |/ _ \ V /                        |
+  |     |  _| |  _ < | || |_| / ___ \| |                         |
+  |     |_|   |_| \_\___|____/_/   \_\_|                         |
+  |                                                             |
+  |   Female Replacement Intelligent Digital Assistant Youth    |
+  |   Stark Industries  *  Terminal Edition  *  v{version}       |
+  |   Mark {mark} Protocol  *  Arc Reactor Powered              |
+  |                                                             |
+  +=============================================================+
 """.rstrip().format(arc=ARC_REACTOR, version=VERSION, mark=MARK_NUMBER)
 
 
@@ -45,27 +106,33 @@ class ResourceGovernor:
     def __init__(self, assistant):
         self.assistant = assistant
         self.running = True
+        self._stop_event = threading.Event()
         self.thread = threading.Thread(target=self._monitor, daemon=True)
         self.thread.start()
 
     def _monitor(self):
-        while self.running:
+        try:
+            import psutil
+        except ImportError:
+            return
+        while not self._stop_event.is_set():
             try:
-                import psutil
                 mem = psutil.virtual_memory()
                 free_gb = mem.available / (1024**3)
                 if free_gb < 1.0:
-                    print(f"[RESOURCE] Low RAM: {free_gb:.1f}GB free — triggering cleanup")
+                    print(f"[RESOURCE] Low RAM: {free_gb:.1f}GB free - triggering cleanup")
+                    self.assistant._emergency_cleanup()
+                cpu = psutil.cpu_percent(interval=0)
+                if cpu > 85:
+                    print(f"[RESOURCE] High CPU: {cpu}% - triggering cleanup")
                     self.assistant._emergency_cleanup()
             except Exception:
                 pass
-            for _ in range(60):
-                if not self.running:
-                    return
-                time.sleep(0.5)
+            self._stop_event.wait(timeout=30)
 
     def stop(self):
         self.running = False
+        self._stop_event.set()
 
 
 class Assistant:
@@ -103,6 +170,10 @@ class Assistant:
         self._scraper = None
         self._security = None
         self._multi_agent = None
+        self._code_index = None
+        self._plugin_manager = None
+        self._mcp_clients = []
+        self._languages = None
 
         self._register_core_tools()
         self._register_web_tools()
@@ -121,6 +192,9 @@ class Assistant:
         self._register_scraper()
         self._register_security()
         self._register_multi_agent()
+        self._register_code_index()
+        self._register_languages()
+        self._register_plugins()
 
         self.governor = ResourceGovernor(self)
 
@@ -131,7 +205,14 @@ class Assistant:
                 return json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        return {"model": "phi4-mini:latest", "models": {"fast": "phi4-mini:latest", "smart": "phi4-mini:latest", "deep": "phi4-mini:latest"}}
+        return {
+            "provider": "groq",
+            "models": {
+                "fast": "llama-3.1-8b-instant",
+                "smart": "llama-3.3-70b-versatile",
+                "deep": "llama-3.3-70b-versatile"
+            }
+        }
 
     def _save_config(self):
         path = Path(__file__).parent.parent / "config.json"
@@ -141,12 +222,17 @@ class Assistant:
             pass
 
     def _init_brain(self):
-        provider = self.config.get("provider", "ollama")
-        if provider == "groq":
-            from core.brain import GroqBrain
-            return GroqBrain(self.config)
-        from core.brain import OllamaBrain
-        return OllamaBrain(self.config)
+        provider = self.config.get("provider", "groq")
+        from core.brain import OllamaBrain, GroqBrain
+        registry = {
+            "groq": GroqBrain,
+            "ollama": OllamaBrain,
+        }
+        cls = registry.get(provider)
+        if cls is None:
+            print(f"  [WARN] Unknown provider '{provider}', falling back to groq")
+            cls = GroqBrain
+        return cls(self.config)
 
     def _register_core_tools(self):
         self.brain.register_tools(
@@ -293,7 +379,7 @@ class Assistant:
     def _lazy_multi_agent(self):
         if self._multi_agent is None:
             from core.multi_agent import MultiAgentSystem
-            self._multi_agent = MultiAgentSystem(ollama_client=self.brain)
+            self._multi_agent = MultiAgentSystem(brain=self.brain)
             self.brain.register_tools(
                 self._multi_agent.get_tool_definitions(),
                 self._multi_agent.get_handler
@@ -347,16 +433,95 @@ class Assistant:
     def _register_multi_agent(self):
         self._lazy_multi_agent()
 
+    def _lazy_code_index(self):
+        if self._code_index is None:
+            from memory.code_indexer import CodeIndex
+            self._code_index = CodeIndex()
+            self.brain.register_tools(
+                self._code_index.get_tool_definitions(),
+                self._code_index.get_handler,
+            )
+
+    def _register_code_index(self):
+        self._lazy_code_index()
+
+    def _lazy_languages(self):
+        if self._languages is None:
+            from tools.languages import LanguageTools
+            self._languages = LanguageTools()
+            self.brain.register_tools(
+                self._languages.get_tool_definitions(),
+                self._languages.get_handler,
+            )
+
+    def _register_languages(self):
+        self._lazy_languages()
+
+    def _lazy_plugins(self):
+        if self._plugin_manager is None:
+            from core.plugin_manager import PluginManager
+            self._plugin_manager = PluginManager(self.brain)
+            loaded = self._plugin_manager.scan_and_register()
+            if loaded:
+                for p in loaded:
+                    print(f"  [PLUGIN] {p['name']} ({p['tools']} tools)")
+
+    def _register_plugins(self):
+        self._lazy_plugins()
+        self._init_mcp()
+
+    def _init_mcp(self):
+        servers = self.config.get("mcp_servers", [])
+        if not servers:
+            return
+        from core.mcp_client import MCPClient
+        _MCP_ALLOWED_COMMANDS = {"node", "npx", "python", "python3", "uvx", "uv", "deno", "bun"}
+        for srv in servers:
+            command = srv.get("command", "")
+            args = srv.get("args", [])
+            name = srv.get("name", command)
+            cmd_base = os.path.basename(command) if command else ""
+            if cmd_base not in _MCP_ALLOWED_COMMANDS:
+                print(f"  [MCP] {name}: command '{cmd_base}' not in allowed list, skipping")
+                continue
+            resolved = shutil.which(command)
+            if resolved and resolved != command:
+                command = resolved
+            try:
+                client = MCPClient(name=name)
+                info = client.connect_stdio(command, args)
+                tools = client.list_tools()
+                mcp_defs = [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": f"mcp_{t['name']}",
+                            "description": f"[MCP:{name}] {t.get('description', '')}",
+                            "parameters": t.get("inputSchema", {"type": "object", "properties": {}}),
+                        },
+                    }
+                    for t in tools
+                ]
+                for td in mcp_defs:
+                    fname = td["function"]["name"]
+                    orig_name = fname.replace("mcp_", "", 1)
+                    def make_getter(cl=client, on=orig_name, expected=fname):
+                        def getter(n, cl=cl, on=on, expected=expected):
+                            if n == expected:
+                                return lambda **kw: cl.call_tool(on, kw)
+                            return None
+                        return getter
+                    self.brain.register_tools([td], make_getter())
+                self._mcp_clients.append(client)
+                print(f"  [MCP] {name}: {len(tools)} tools loaded")
+            except Exception as e:
+                print(f"  [MCP] {name}: failed ({e})")
+
     def _obfuscate(self, text):
-        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
-        return encoded[::-1]
+        return _encrypt_data(text)
 
     def _deobfuscate(self, text):
-        try:
-            decoded = base64.b64decode(text[::-1].encode("ascii")).decode("utf-8")
-            return decoded
-        except Exception:
-            return text
+        return _decrypt_data(text)
 
     def _save_conversation(self):
         if not self.conversation:
@@ -367,7 +532,7 @@ class Assistant:
         try:
             data = {
                 "timestamp": datetime.datetime.now().isoformat(),
-                "mode": "stark" if self.stark_mode else "jarvis",
+                "mode": "stark" if self.stark_mode else "friday",
                 "safe_mode": self.safe_mode,
                 "messages": self.conversation[-100:]
             }
@@ -377,8 +542,8 @@ class Assistant:
                 encoding="utf-8"
             )
             self._cleanup_old()
-        except Exception as e:
-            print(f"[ERROR] Save: {e}")
+        except Exception:
+            pass
 
     def _load_conversation(self, session_file=None):
         if session_file is None:
@@ -395,9 +560,8 @@ class Assistant:
             self.session_file = Path(session_file)
             self.speech.speak(f"Loaded conversation with {len(self.conversation)} messages.")
             return True
-        except Exception as e:
+        except Exception:
             self.speech.speak("Failed to load conversation.")
-            print(f"[ERROR] {e}")
             return False
 
     def _list_conversations(self):
@@ -472,6 +636,11 @@ class Assistant:
             return True
 
         if any(w in cmd_lower for w in ["safe mode off", "trust me", "trusted mode", "disable safety", "i trust you"]):
+            if self.text_mode:
+                confirm = input("  WARNING: This disables all safety guards. Type 'YES DANGER' to confirm: ").strip()
+                if confirm != "YES DANGER":
+                    self.speech.speak("Safe mode remains enabled. Good choice.")
+                    return True
             self.safe_mode = False
             if self._automator:
                 self._automator.safe_mode = False
@@ -487,7 +656,9 @@ class Assistant:
             return True
 
         if any(w in cmd_lower for w in ["my name", "what's my name", "what is my name", "who am i"]):
-            self.speech.speak("Your name is Nikesh. Stored in your biometric profile.")
+            import getpass
+            user = getpass.getuser()
+            self.speech.speak(f"Your system username is {user}. Stored in your biometric profile.")
             return True
 
         if any(w in cmd_lower for w in ["who built you", "who made you", "your creator"]):
@@ -589,7 +760,7 @@ class Assistant:
                 result = self._automator.set_default_profile(m.group(1))
                 self.speech.speak(result)
                 return True
-            result = self._automator.set_default_profile("nikeshreddy3002")
+            result = self._automator.set_default_profile(os.environ.get("CHROME_PROFILE", "Default"))
             self.speech.speak(result)
             return True
 
@@ -629,6 +800,17 @@ class Assistant:
         self.brain.chat_with_tools(self.conversation, on_speak=on_speak)
         self._trim_conversation()
         self._save_conversation()
+        self._post_process(command)
+
+    def _post_process(self, command):
+        if self._memory is not None:
+            self._memory.auto_summarize(self.conversation)
+        try:
+            from memory.user_profile import UserProfile
+            profile = UserProfile()
+            profile.record_request(command)
+        except Exception:
+            pass
 
     def _list_models(self):
         models = self.brain.list_models()
@@ -648,6 +830,7 @@ class Assistant:
     def _suit_status(self):
         uptime = datetime.datetime.now() - self.session_start
         minutes = int(uptime.total_seconds() / 60)
+        hc = self.brain.health_check()
         try:
             import psutil
             cpu = psutil.cpu_percent(interval=1)
@@ -660,57 +843,61 @@ class Assistant:
   Session Uptime:    {minutes} minutes
   Commands Run:      {self.commands_run}
   AI Model:          {self.brain.current_model}
+  Provider:          {hc.get('provider', '?')}
+  Tools:             {hc.get('tools_registered', 0)} registered
+  API Calls:         {hc.get('total_calls', 0)} ({hc.get('total_errors', 0)} errors)
+  AI Time:           {hc.get('total_time_seconds', 0)}s
   Stark Mode:        {'ENGAGED' if self.stark_mode else 'STANDBY'}
   Safety Mode:       {'ON' if self.safe_mode else 'OFF'}"""
             self.speech.speak(f"All systems nominal. Arc reactor at full power. CPU at {cpu} percent. Uptime: {minutes} minutes.")
         except ImportError:
-            status = f"Suit Status:\n  Arc Reactor: ONLINE\n  Model: {self.brain.current_model}\n  Stark Mode: {'ENGAGED' if self.stark_mode else 'STANDBY'}"
+            status = f"Suit Status:\n  Arc Reactor: ONLINE\n  Model: {self.brain.current_model}\n  Provider: {hc.get('provider', '?')}\n  Tools: {hc.get('tools_registered', 0)}\n  Stark Mode: {'ENGAGED' if self.stark_mode else 'STANDBY'}"
             self.speech.speak("System check complete. All primary systems are green.")
         print(f"\n  {'='*55}")
-        print(f"  ⚡ STARK INDUSTRIES - {status}")
+        print(f"  * STARK INDUSTRIES - {status}")
         print(f"  {'='*55}")
 
     def _show_help(self):
         help_text = f"""
-  ╔═══════════════════════════════════════════════════════════════╗
-  ║  F.R.I.D.A.Y.  —  Stark Industries  v{VERSION}                ║
-  ╚═══════════════════════════════════════════════════════════════╝
+  +-----------------------------------------------------------+
+  |  F.R.I.D.A.Y.  --  Stark Industries  v{VERSION}              |
+  +-----------------------------------------------------------+
 
-  🎤 Voice:      "Hey Friday" to wake
-  ⚡ Stark Mode: "Stark Mode" / "Normal Mode"
-  🖥️  System:    "Suit status" / "CPU" / "Memory" / "Disk"
-                 "Screenshot" / "Volume up/down" / "Open [app]"
-                 "Wifi status" / "Processes" / "Services"
-                 "List apps" / "Notify [title] [msg]"
-  🌐 Web:        "Search [query]" / "Fetch [url]"
-                 "Browse [url]" / "Google [query]"
-  📄 Files:      "Read [file]" / "OCR [image]" / "Open spreadsheet"
-                 "Write [file]" / "Edit [file]" / "List [dir]"
-                 "Find [pattern]" / "Grep [text]"
-  ▶️  Code:       "Run [code]" / "Run this Python"
-  🖥️  Shell:      "Run command [cmd]" / "PowerShell [cmd]"
-  📦 Git:        "Git status" / "Git commit [msg]" / "Git push"
-                 "Git pull" / "Git clone [url]"
-  💾 Memory:     "Save" / "Load" / "List conversations"
-                 "Remember [key] is [value]" / "Recall [query]"
-  🔬 Research:   "Research [topic]" / "Deep dive [topic]"
-  📋 Planning:   "Plan: [objective]" / "Progress" / "List plans"
-  🎮 Automate:   "Launch [app]" / "Type [text]" / "Press [key]"
-                 "Click" / "Scroll" / "Screenshot"
-   📡 Monitor:    "Start monitor" / "Stop monitor" / "Events"
+  [V] Voice:      "Hey Friday" to wake
+  [*] Stark Mode: "Stark Mode" / "Normal Mode"
+  [S] System:     "Suit status" / "CPU" / "Memory" / "Disk"
+                  "Screenshot" / "Volume up/down" / "Open [app]"
+                  "Wifi status" / "Processes" / "Services"
+                  "List apps" / "Notify [title] [msg]"
+  [W] Web:        "Search [query]" / "Fetch [url]"
+                  "Browse [url]" / "Google [query]"
+  [F] Files:      "Read [file]" / "OCR [image]" / "Open spreadsheet"
+                  "Write [file]" / "Edit [file]" / "List [dir]"
+                  "Find [pattern]" / "Grep [text]"
+  [C] Code:       "Run [code]" / "Run this Python"
+  [S] Shell:      "Run command [cmd]" / "PowerShell [cmd]"
+  [G] Git:        "Git status" / "Git commit [msg]" / "Git push"
+                  "Git pull" / "Git clone [url]"
+  [M] Memory:     "Save" / "Load" / "List conversations"
+                  "Remember [key] is [value]" / "Recall [query]"
+  [R] Research:   "Research [topic]" / "Deep dive [topic]"
+  [P] Planning:   "Plan: [objective]" / "Progress" / "List plans"
+  [A] Automate:   "Launch [app]" / "Type [text]" / "Press [key]"
+                  "Click" / "Scroll" / "Screenshot"
+  [M] Monitor:    "Start monitor" / "Stop monitor" / "Events"
                   (watches CPU, RAM, disk in background)
-   📰 News:       "News" / "Headlines" / "Current events"
-   📖 Wikipedia:  "Wikipedia [topic]" / "Look up [topic]"
-   💹 Stocks:     "Stock [symbol]" / "Market" / "Stock price [AAPL]"
-   🌐 Scraper:    "Scrape [url]" / "Extract links [url]" / "Check site [url]"
-   🛡️  Security:   "Check ports" / "Firewall status" / "Security audit"
-   👥 Team:       "Design architecture [project]" / "Review code"
+  [N] News:       "News" / "Headlines" / "Current events"
+  [W] Wikipedia:  "Wikipedia [topic]" / "Look up [topic]"
+  [S] Stocks:     "Stock [symbol]" / "Market" / "Stock price [AAPL]"
+  [W] Scraper:    "Scrape [url]" / "Extract links [url]" / "Check site [url]"
+  [S] Security:   "Check ports" / "Firewall status" / "Security audit"
+  [T] Team:       "Design architecture [project]" / "Review code"
                   "Research [topic]" / "Run team on [task]"
-                  (analyst → architect → developer → reviewer → tester → security)
-   🤖 Agent:      "Agent mode" — I handle complex tasks autonomously
-   🛡️  Safety:     "Safe mode on/off"
-  ⏹️  "Goodbye" / "Exit" to power down
-  ═══════════════════════════════════════════════════════════════
+                  (analyst -> architect -> developer -> reviewer -> tester -> security)
+  [A] Agent:      "Agent mode" -- I handle complex tasks autonomously
+  [S] Safety:     "Safe mode on/off"
+  [X] "Goodbye" / "Exit" to power down
+  -----------------------------------------------------------
 """
         print(help_text)
         self.speech.speak("Help menu displayed on screen, sir.")
@@ -718,19 +905,21 @@ class Assistant:
     def run_text(self):
         self.text_mode = True
         print(BANNER)
-        print("  ╔═══════════════════════════════════════════════════════════════╗")
-        print("  ║              TEXT MODE ACTIVATED                             ║")
-        print("  ║  Type commands below • 'help' for all commands               ║")
-        print("  ║  'goodbye' to power down • Ctrl+C to shutdown                ║")
-        print("  ╚═══════════════════════════════════════════════════════════════╝")
+        print("  +-----------------------------------------------------------+")
+        print("  |              TEXT MODE ACTIVATED                           |")
+        print("  |  Type commands below -- 'help' for all commands            |")
+        print("  |  'goodbye' to power down -- Ctrl+C to shutdown             |")
+        print("  +-----------------------------------------------------------+")
         hr = datetime.datetime.now().hour
         if hr < 12:
-            g = "Good morning"
+            g = "Good morning Nikesh"
         elif hr < 17:
-            g = "Good afternoon"
+            g = "Good afternoon Nikesh"
         else:
-            g = "Good evening"
-        self.speech.speak(f"{g}, Nikesh. Text mode activated.")
+            g = "Good evening Nikesh"
+        import getpass
+        _username = getpass.getuser()
+        self.speech.speak(f"{g}. Text mode activated.")
         self.is_awake = True
         while self.running:
             try:
@@ -745,10 +934,10 @@ class Assistant:
 
     def run(self):
         print(BANNER)
-        print("  ┌──────────────────────────────────────────────────────────┐")
-        print("  │  Arc Reactor: ONLINE  •  Neural Link: ACTIVE              │")
-        print("  │  Press Ctrl+C to emergency shutdown                       │")
-        print("  └──────────────────────────────────────────────────────────┘")
+        print("  +-----------------------------------------------------------+")
+        print("  |  Arc Reactor: ONLINE  *  Neural Link: ACTIVE              |")
+        print("  |  Press Ctrl+C to emergency shutdown                       |")
+        print("  +-----------------------------------------------------------+")
         self.speech.speak("All systems online. FRIDAY at your service.")
 
         while self.running:

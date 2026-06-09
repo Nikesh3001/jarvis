@@ -1,63 +1,13 @@
 import re
-import socket
-import ipaddress
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
-
-_PRIVATE_IPS = {
-    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-    "127.0.0.0/8", "169.254.0.0/16", "0.0.0.0/32",
-    "::1/128", "fc00::/7", "fe80::/10",
-}
-_CLOUD_METADATA = {"169.254.169.254", "169.254.169.253", "100.100.100.200"}
-
-
-def _is_ssrf_blocked(hostname):
-    if not hostname:
-        return True
-    try:
-        addr = ipaddress.ip_address(hostname)
-        if str(addr) in _CLOUD_METADATA:
-            return True
-        if any(addr in ipaddress.ip_network(n) for n in _PRIVATE_IPS):
-            return True
-        return False
-    except ValueError:
-        pass
-    old_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(5)
-    try:
-        for _, _, _, _, sockaddr in socket.getaddrinfo(hostname, 80):
-            ip = sockaddr[0]
-            addr = ipaddress.ip_address(ip)
-            if str(addr) in _CLOUD_METADATA:
-                return True
-            if any(addr in ipaddress.ip_network(n) for n in _PRIVATE_IPS):
-                return True
-        return False
-    except OSError:
-        return True
-    finally:
-        socket.setdefaulttimeout(old_timeout)
-
-
-def _validate_url(url):
-    if not url.startswith(("http://", "https://")):
-        if "." not in url:
-            raise ValueError("Invalid URL")
-        url = "https://" + url
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError("Only HTTP/HTTPS URLs are allowed")
-    if _is_ssrf_blocked(parsed.hostname):
-        raise ValueError("Access to internal or private network addresses is not allowed")
-    return url
+from core.ssrf import validate_url, safe_httpx_get
 
 
 class WebScraper:
     def __init__(self):
         self._httpx = None
-        self._readability = None
+        self._client = None
 
     @property
     def httpx(self):
@@ -66,21 +16,28 @@ class WebScraper:
             self._httpx = httpx
         return self._httpx
 
+    def _get_client(self):
+        if self._client is None:
+            self._client = self.httpx.Client(
+                follow_redirects=False,
+                timeout=30,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
+        return self._client
+
     def _fetch(self, url, **kwargs):
-        url = _validate_url(url)
-        r = self.httpx.get(url, **kwargs)
-        final_url = str(r.url)
-        if final_url != url:
-            _validate_url(final_url)
-        return r
+        url = validate_url(url)
+        client = self._get_client()
+        kwargs.pop("follow_redirects", None)
+        return safe_httpx_get(url, client, **kwargs)
 
     def scrape_url(self, url, max_chars=8000):
         try:
-            url = _validate_url(url)
-            r = self._fetch(url, timeout=30, follow_redirects=True,
-                           headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
-            r.raise_for_status()
-            html = r.text
+            url = validate_url(url)
+            client = self._get_client()
+            response = safe_httpx_get(url, client, timeout=30)
+            response.raise_for_status()
+            html = response.text
             title_m = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
             title = title_m.group(1).strip() if title_m else url
             text = self._extract_readable(html)
@@ -130,11 +87,11 @@ class WebScraper:
 
     def extract_links(self, url, max_links=20):
         try:
-            url = _validate_url(url)
-            r = self._fetch(url, timeout=20, follow_redirects=True,
-                           headers={"User-Agent": "Mozilla/5.0"})
-            r.raise_for_status()
-            html = r.text
+            url = validate_url(url)
+            client = self._get_client()
+            response = safe_httpx_get(url, client, timeout=20)
+            response.raise_for_status()
+            html = response.text
             links = re.findall(r'href="(https?://[^"]+)"', html)
             seen = set()
             unique = []
@@ -160,9 +117,10 @@ class WebScraper:
 
     def check_site_status(self, url):
         try:
-            url = _validate_url(url)
-            r = self._fetch(url, timeout=15, follow_redirects=True)
-            return f"{url} — Status: {r.status_code}, Size: {len(r.content)} bytes, Redirects: {len(r.history)}"
+            url = validate_url(url)
+            client = self._get_client()
+            response = safe_httpx_get(url, client, timeout=15)
+            return f"{url} — Status: {response.status_code}, Size: {len(response.content)} bytes, Redirects: {len(response.history)}"
         except ValueError as e:
             return f"Status check error: {e}"
         except Exception:

@@ -18,9 +18,7 @@ class SystemTools:
     def get_cpu(self):
         try:
             p = self.psutil
-            freq = p.cpu_freq()
-            freq_s = f"{freq.current:.0f} MHz" if freq else "N/A"
-            return f"CPU: {p.cpu_percent(interval=0.5)}% used, {p.cpu_count(logical=True)} logical cores, freq {freq_s}"
+            return f"CPU: {p.cpu_percent(interval=0.1)}% used, {p.cpu_count(logical=True)} logical cores"
         except Exception as e:
             return "CPU info failed"
 
@@ -76,9 +74,10 @@ class SystemTools:
 
     def get_processes(self, top=10):
         try:
+            import heapq
             p = self.psutil
-            procs = sorted(p.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']),
-                          key=lambda p: p.info['cpu_percent'] or 0, reverse=True)[:top]
+            procs = heapq.nlargest(top, p.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']),
+                          key=lambda p: p.info['cpu_percent'] or 0)
             lines = []
             for proc in procs:
                 try:
@@ -91,10 +90,19 @@ class SystemTools:
 
     def kill_process(self, name):
         try:
+            # Safety: require exact match, not substring, to prevent mass-killing
+            name_lower = name.lower().strip()
             killed = []
+            # Critical system processes that should never be killed
+            protected = {'system', 'svchost', 'csrss', 'winlogon', 'lsass', 'services',
+                         'smss', 'wininit', 'dwm', 'fontdrvhost', 'searchindexer'}
             for p in self.psutil.process_iter(['pid', 'name']):
                 try:
-                    if name.lower() in p.info['name'].lower():
+                    pname = p.info['name'].lower()
+                    # Require exact match or prefix match (not substring)
+                    if pname == name_lower or pname.startswith(name_lower + '.'):
+                        if pname in protected:
+                            continue
                         p.terminate()
                         killed.append(p.info['name'])
                 except Exception:
@@ -108,14 +116,21 @@ class SystemTools:
     def start_process(self, path):
         try:
             import subprocess as _sp
+            # Basic path validation: reject obviously dangerous inputs
+            if any(c in path for c in '<>|`&\n\r\x00'):
+                return "Start process failed: invalid characters in path"
+            # Resolve and check the path exists
+            resolved = os.path.realpath(os.path.expanduser(path))
+            if not os.path.exists(resolved):
+                return f"Start process failed: path not found: {path}"
             if path.lower().endswith('.exe') or '.' not in os.path.basename(path):
-                _sp.Popen([path], shell=False)
+                _sp.Popen([resolved], shell=False)
             elif is_windows():
-                os.startfile(path)
+                os.startfile(resolved)
             elif is_macos():
-                _sp.Popen(["open", path], shell=False)
+                _sp.Popen(["open", resolved], shell=False)
             else:
-                _sp.Popen(["xdg-open", path], shell=False)
+                _sp.Popen(["xdg-open", resolved], shell=False)
             return f"Started: {path}"
         except Exception as e:
             return "Start process failed"
@@ -199,8 +214,9 @@ class SystemTools:
                 return "Clipboard set failed"
 
     def _get_volume_windows(self):
-        r = subprocess.run(["powershell", "-NoProfile", "-Command",
-            r"Add-Type -TypeDefinition @' using System.Runtime.InteropServices; public class Audio { [DllImport(\"winmm.dll\")] public static extern int waveOutGetVolume(System.IntPtr h, out uint v); } '@; $v=0; [Audio]::waveOutGetVolume([IntPtr]::Zero,[ref]$v); $p=[math]::Round((($v -band 0xFFFF)/65535.0)*100); Write-Output $p"],
+        ps_code = 'Add-Type -TypeDefinition \'using System.Runtime.InteropServices; public class Audio { [DllImport("winmm.dll")] public static extern int waveOutGetVolume(System.IntPtr h, out uint v); }\' ; $v=0; [void][Audio]::waveOutGetVolume([IntPtr]::Zero,[ref]$v); Write-Output ([math]::Round((($v -band 0xFFFF)/65535.0)*100))'
+        encoded = __import__('base64').b64encode(ps_code.encode('utf-16-le')).decode()
+        r = subprocess.run(["powershell", "-NoProfile", "-EncodedCommand", encoded],
             capture_output=True, text=True, timeout=10)
         return r.stdout.strip()
 
@@ -230,7 +246,7 @@ class SystemTools:
             return "Volume get failed"
 
     def _set_volume_windows(self, level):
-        ps_code = f"Add-Type -TypeDefinition @' using System.Runtime.InteropServices; public class Audio {{ [DllImport(\"winmm.dll\")] public static extern int waveOutGetVolume(System.IntPtr h, out uint v); [DllImport(\"winmm.dll\")] public static extern int waveOutSetVolume(System.IntPtr h, uint v); }} '@; $v=[uint32](({level}/100.0)*65535); [Audio]::waveOutSetVolume([IntPtr]::Zero,($v -bor ($v -shl 16)))"
+        ps_code = 'Add-Type -TypeDefinition \'using System.Runtime.InteropServices; public class Audio { [DllImport("winmm.dll")] public static extern int waveOutGetVolume(System.IntPtr h, out uint v); [DllImport("winmm.dll")] public static extern int waveOutSetVolume(System.IntPtr h, uint v); }\' ; $v=[uint32]((' + str(level) + '/100.0)*65535); [Audio]::waveOutSetVolume([IntPtr]::Zero,($v -bor ($v -shl 16)))'
         encoded = __import__('base64').b64encode(ps_code.encode('utf-16-le')).decode()
         subprocess.run(["powershell", "-NoProfile", "-EncodedCommand", encoded],
             capture_output=True, text=True, timeout=10)
@@ -383,11 +399,16 @@ class SystemTools:
             r = subprocess.run(["powershell", "-NoProfile", "-Command",
                 "Add-Type @' using System; using System.Runtime.InteropServices; public class Win {{ [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow(); [DllImport(\"user32.dll\")] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder t, int c); }} '@; $procs = Get-Process | Where-Object {{ $_.MainWindowTitle -ne '' }} | Select-Object -First 20 MainWindowTitle; ($procs | ConvertTo-Json)"],
                 capture_output=True, text=True, timeout=10)
-            data = json.loads(r.stdout)
-            if isinstance(data, dict):
-                data = [data]
-            titles = [d['MainWindowTitle'] for d in data if d.get('MainWindowTitle')]
-            return "Windows: " + " | ".join(titles[:20]) if titles else "No windows with titles found"
+            try:
+                data = json.loads(r.stdout)
+                if isinstance(data, dict):
+                    data = [data]
+                if not isinstance(data, list):
+                    return "Window list failed"
+                titles = [d['MainWindowTitle'] for d in data if isinstance(d, dict) and d.get('MainWindowTitle')]
+                return "Windows: " + " | ".join(titles[:20]) if titles else "No windows with titles found"
+            except (json.JSONDecodeError, TypeError):
+                return "Window list failed"
         elif is_macos():
             r = subprocess.run(["osascript", "-e",
                 'tell application "System Events" to get name of every process whose visible is true'],
@@ -423,13 +444,14 @@ class SystemTools:
         except ImportError:
             pass
         if is_windows():
-            ps_code = f"$h=Get-Process | Where-Object {{ $_.MainWindowTitle -like '*{title}*' }} | Select-Object -First 1 | ForEach-Object {{ $_.MainWindowHandle }}; if ($h -and $h -ne 0) {{ Add-Type @' using System; using System.Runtime.InteropServices; public class W {{ [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h); }} '@; [W]::SetForegroundWindow($h) }}"
+            safe_title = title.replace("'", "''")
+            ps_code = f"$t='*{safe_title}*'; $h=Get-Process | Where-Object {{ $_.MainWindowTitle -like $t }} | Select-Object -First 1 | ForEach-Object {{ $_.MainWindowHandle }}; if ($h -and $h -ne 0) {{ Add-Type @' using System; using System.Runtime.InteropServices; public class W {{ [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h); }} '@; [W]::SetForegroundWindow($h) }}"
             encoded = __import__('base64').b64encode(ps_code.encode('utf-16-le')).decode()
             subprocess.run(["powershell", "-NoProfile", "-EncodedCommand", encoded],
                 capture_output=True, text=True, timeout=10)
             return f"Attempted to focus: {title}"
         elif is_macos():
-            safe_title = title.replace('"', '').replace("'", "")
+            safe_title = title.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', '\\n')
             subprocess.run(["osascript", "-e",
                 f'tell application "{safe_title}" to activate'],
                 capture_output=True, timeout=10)
@@ -483,11 +505,16 @@ class SystemTools:
                 r = subprocess.run(["powershell", "-NoProfile", "-Command",
                     "Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*, HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object DisplayName | Select-Object -First 30 DisplayName,DisplayVersion | ConvertTo-Json"],
                     capture_output=True, text=True, timeout=30)
-                data = json.loads(r.stdout)
-                if isinstance(data, dict):
-                    data = [data]
-                names = [f"{d.get('DisplayName','?')} ({d.get('DisplayVersion','?')})" for d in data if d.get('DisplayName')]
-                return "Software: " + " | ".join(names[:20]) if names else "Could not retrieve software list"
+                try:
+                    data = json.loads(r.stdout)
+                    if isinstance(data, dict):
+                        data = [data]
+                    if not isinstance(data, list):
+                        return "Could not retrieve software list"
+                    names = [f"{d.get('DisplayName','?')} ({d.get('DisplayVersion','?')})" for d in data if isinstance(d, dict) and d.get('DisplayName')]
+                    return "Software: " + " | ".join(names[:20]) if names else "Could not retrieve software list"
+                except (json.JSONDecodeError, TypeError):
+                    return "Could not retrieve software list"
             elif is_macos():
                 r = subprocess.run(["system_profiler", "SPApplicationsDataType", "-json"],
                     capture_output=True, text=True, timeout=60)
@@ -514,10 +541,15 @@ class SystemTools:
                 r = subprocess.run(["powershell", "-NoProfile", "-Command",
                     "Get-CimInstance Win32_StartupCommand | Select-Object Name,Command,User | ConvertTo-Json"],
                     capture_output=True, text=True, timeout=15)
-                data = json.loads(r.stdout)
-                if isinstance(data, dict):
-                    data = [data]
-                items = [f"{d.get('Name','?')} ({d.get('User','?')})" for d in data if d.get('Name')]
+                try:
+                    data = json.loads(r.stdout)
+                    if isinstance(data, dict):
+                        data = [data]
+                    if not isinstance(data, list):
+                        return "No startup programs found"
+                except (json.JSONDecodeError, TypeError):
+                    return "No startup programs found"
+                items = [f"{d.get('Name','?')} ({d.get('User','?')})" for d in data if isinstance(d, dict) and d.get('Name')]
                 return "Startup: " + " | ".join(items[:15]) if items else "No startup programs found"
             elif is_macos():
                 r = subprocess.run(["osascript", "-e",
@@ -540,14 +572,10 @@ class SystemTools:
     def get_services(self):
         try:
             if is_windows():
-                p = self.psutil
-                svcs = []
-                for s in p.win_service_iter():
-                    try:
-                        if s.status() == 'running':
-                            svcs.append(s.name())
-                    except Exception:
-                        pass
+                r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                    "Get-Service | Where-Object Status -eq Running | Select-Object -First 30 -ExpandProperty Name"],
+                    capture_output=True, text=True, timeout=15)
+                svcs = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()]
                 return f"Running services ({len(svcs)}): " + ", ".join(sorted(svcs)[:20]) + (" ..." if len(svcs) > 20 else "")
             elif is_macos():
                 r = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=10)
@@ -604,9 +632,14 @@ class SystemTools:
                      "Get-PSDrive -PSProvider FileSystem | Select-Object Name, Root, Used, Free | ConvertTo-Json"],
                     capture_output=True, text=True, timeout=15
                 )
-                data = json.loads(r.stdout)
-                if isinstance(data, dict):
-                    data = [data]
+                try:
+                    data = json.loads(r.stdout)
+                    if isinstance(data, dict):
+                        data = [data]
+                    if not isinstance(data, list):
+                        return "Drive list failed"
+                except (json.JSONDecodeError, TypeError):
+                    return "Drive list failed"
                 lines = []
                 for d in data:
                     name = d.get("Name", "?")
@@ -636,9 +669,9 @@ class SystemTools:
             if is_windows():
                 import json as _json
                 import base64 as _b64
-                safe_search = search.replace('"', '`"').replace("'", "''")
+                safe_search = search.replace("'", "''")
                 ps_script = (
-                    '$search = "' + safe_search + '"\n'
+                    '$search = \'' + safe_search + '\'\n'
                     '$results = @()\n'
                     '$results += Get-StartApps | Where-Object { $_.Name -like "*$search*" } | Select-Object Name, AppId\n'
                     '$results += Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object { $_.DisplayName -like "*$search*" } | Select-Object @{n="Name";e={"$($_.DisplayName) - $($_.InstallLocation)"}}, @{n="AppId";e={"$($_.InstallLocation)"}}\n'
@@ -651,14 +684,20 @@ class SystemTools:
                     capture_output=True, text=True, timeout=15
                 )
                 if r.stdout.strip():
-                    data = _json.loads(r.stdout)
-                    if isinstance(data, dict):
-                        data = [data]
-                    for d in data:
-                        app_name = d.get("Name")
-                        path = d.get("AppId", "")
-                        if app_name:
-                            results.append(f"{app_name}: {path}")
+                    try:
+                        data = _json.loads(r.stdout)
+                        if isinstance(data, dict):
+                            data = [data]
+                        if not isinstance(data, list):
+                            raise ValueError("invalid JSON structure")
+                    except (_json.JSONDecodeError, ValueError):
+                        pass
+                    else:
+                        for d in data:
+                            app_name = d.get("Name")
+                            path = d.get("AppId", "")
+                            if app_name:
+                                results.append(f"{app_name}: {path}")
                 paths = os.environ.get("PATH", "").split(os.pathsep)
                 for p_dir in paths:
                     try:
@@ -696,7 +735,7 @@ class SystemTools:
             {"type": "function", "function": {"name": "get_system_uptime", "description": "Uptime", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "get_processes", "description": "Top processes by CPU", "parameters": {"type": "object", "properties": {"top": {"type": "integer", "description": "Count", "default": 10}}}}},
             {"type": "function", "function": {"name": "kill_process", "description": "Kill process by name", "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "Process name"}}, "required": ["name"]}}},
-            {"type": "function", "function": {"name": "start_process", "description": "Launch app or file", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Path"}}, "required": ["path"]}}},
+
             {"type": "function", "function": {"name": "take_screenshot", "description": "Take screenshot", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "get_clipboard", "description": "Clipboard text", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "set_clipboard", "description": "Copy text to clipboard", "parameters": {"type": "object", "properties": {"text": {"type": "string", "description": "Text"}}, "required": ["text"]}}},
@@ -730,7 +769,6 @@ class SystemTools:
             "get_system_uptime": self.get_system_uptime,
             "get_processes": self.get_processes,
             "kill_process": self.kill_process,
-            "start_process": self.start_process,
             "take_screenshot": self.take_screenshot,
             "get_clipboard": self.get_clipboard,
             "set_clipboard": self.set_clipboard,

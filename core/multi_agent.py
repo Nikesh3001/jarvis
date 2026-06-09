@@ -1,5 +1,4 @@
 import json
-import subprocess
 from datetime import datetime
 
 
@@ -47,8 +46,8 @@ class MultiAgentSystem:
         },
     }
 
-    def __init__(self, ollama_client=None):
-        self.ollama = ollama_client
+    def __init__(self, brain=None):
+        self.brain = brain
         self._roles = ["analyst", "architect", "developer", "reviewer", "tester", "security"]
         self._output = {}
 
@@ -93,26 +92,21 @@ class MultiAgentSystem:
             "If code is involved, include actual code snippets. "
             "Format your response clearly with sections."
         )
-        return self._query_ollama(prompt)
+        return self._query_llm(prompt)
 
-    def _query_ollama(self, prompt):
-        if self.ollama and hasattr(self.ollama, 'chat'):
+    def _query_llm(self, prompt):
+        if self.brain and hasattr(self.brain, 'chat'):
             try:
-                resp = self.ollama.chat(model=self.ollama.model, messages=[
+                messages = [
                     {"role": "system", "content": "You are a technical AI assistant."},
                     {"role": "user", "content": prompt}
-                ])
-                return resp.get("message", {}).get("content", "No response from LLM.")
+                ]
+                result = self.brain.chat(messages, tools_enabled=False)
+                content = result.get("message", {}).get("content", "")
+                return content or "No response from LLM."
             except Exception as e:
                 return f"LLM query error: {e}"
-        try:
-            r = subprocess.run(
-                ["ollama", "run", "phi4-mini:latest", prompt],
-                capture_output=True, text=True, timeout=120
-            )
-            return r.stdout.strip() or "No output from Ollama."
-        except Exception:
-            return "Multi-agent requires Ollama to be running."
+        return "Brain not initialized. Ensure Groq API key is configured."
 
     def _generate_summary(self, task, results):
         summary_parts = ["## Multi-Agent Summary\n", f"Task: {task}\n", f"Completed: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"]
@@ -135,7 +129,7 @@ class MultiAgentSystem:
             f"7. Key design decisions and tradeoffs\n"
             f"8. Security considerations"
         )
-        return self._query_ollama(prompt)
+        return self._query_llm(prompt)
 
     def review_code(self, code, language="python"):
         prompt = (
@@ -150,7 +144,7 @@ class MultiAgentSystem:
             f"7. Suggestions for improvement\n\n"
             f"Rate the code quality from 1-10 and provide specific, actionable feedback."
         )
-        return self._query_ollama(prompt)
+        return self._query_llm(prompt)
 
     def research_topic(self, topic):
         prompt = (
@@ -163,7 +157,7 @@ class MultiAgentSystem:
             f"5. Recommendations\n"
             f"6. Sources or further reading suggestions"
         )
-        return self._query_ollama(prompt)
+        return self._query_llm(prompt)
 
     def get_tool_definitions(self):
         return [

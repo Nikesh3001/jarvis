@@ -11,19 +11,28 @@ ALLOWED_ROOTS = [
 
 def _safe_resolve(path):
     path = os.path.expanduser(path)
-    try:
-        resolved = os.path.realpath(path)
-    except OSError:
-        resolved = os.path.abspath(path)
-    for root in ALLOWED_ROOTS:
-        if resolved == root or resolved.startswith(root + os.sep):
-            return resolved
+    before = os.path.abspath(path)
+    for _ in range(5):
+        try:
+            resolved = os.path.realpath(path)
+        except OSError:
+            resolved = os.path.abspath(path)
+        for root in ALLOWED_ROOTS:
+            if resolved == root or resolved.startswith(root + os.sep):
+                return resolved
+        if resolved == before:
+            break
+        before = resolved
     raise PermissionError("Access denied: path is outside allowed directories")
 
 
 class FileEditor:
     def write_file(self, path, content):
         path = _safe_resolve(path)
+        # Symlink race check: verify path still resolves to allowed dir
+        resolved = _safe_resolve(path)
+        if resolved != path:
+            raise PermissionError("Access denied: symlink race detected")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -37,6 +46,9 @@ class FileEditor:
             content = f.read()
         if old_string not in content:
             return f"String not found in {path}"
+        resolved = _safe_resolve(path)
+        if resolved != path:
+            raise PermissionError("Access denied: symlink race detected")
         with open(path, "w", encoding="utf-8") as f:
             f.write(content.replace(old_string, new_string))
         count = content.count(old_string)
@@ -45,6 +57,9 @@ class FileEditor:
     def append_file(self, path, content):
         path = _safe_resolve(path)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
+        resolved = _safe_resolve(path)
+        if os.path.exists(path) and resolved != path:
+            raise PermissionError("Access denied: symlink race detected")
         with open(path, "a", encoding="utf-8") as f:
             f.write(content)
         return f"Appended {len(content)} bytes to {path}"
@@ -80,6 +95,9 @@ class FileEditor:
 
     def delete_file(self, path):
         path = _safe_resolve(path)
+        resolved = _safe_resolve(path)
+        if resolved != path:
+            raise PermissionError("Access denied: symlink race detected")
         if not os.path.exists(path):
             return f"File not found: {path}"
         if os.path.isdir(path):
@@ -111,12 +129,17 @@ class FileEditor:
             return "Access denied"
         matches = []
         for file in glob.glob(os.path.join(path, "**", include), recursive=True):
-            if os.path.isfile(file):
+            # Verify each resolved file is within allowed dirs
+            try:
+                resolved_file = _safe_resolve(file)
+            except PermissionError:
+                continue
+            if os.path.isfile(resolved_file):
                 try:
-                    with open(file, "r", encoding="utf-8", errors="replace") as f:
+                    with open(resolved_file, "r", encoding="utf-8", errors="replace") as f:
                         for i, line in enumerate(f, 1):
                             if pattern in line:
-                                matches.append(f"{file}:{i}: {line.rstrip()[:200]}")
+                                matches.append(f"{resolved_file}:{i}: {line.rstrip()[:200]}")
                 except Exception:
                     pass
                 if len(matches) >= 50:

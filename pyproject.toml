@@ -1,0 +1,20 @@
+[project]
+name = "jarvis"
+version = "3.5.0"
+description = "FRIDAY AI Assistant - Elite coding AI"
+requires-python = ">=3.10"
+
+[tool.black]
+line-length = 100
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503"]
+exclude = ["venv", "__pycache__"]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

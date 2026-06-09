@@ -19,6 +19,8 @@ def main():
             mode = "continuous"
         elif arg in ("-t", "--text", "--type"):
             mode = "text"
+        elif arg in ("-w", "--web"):
+            mode = "web"
         else:
             try:
                 mic_index = int(arg)
@@ -28,13 +30,23 @@ def main():
         print(f"  Usage: python jarvis.py [options] [mic_index]")
         print(f"    -c, --continuous   Voice mode (no wake word)")
         print(f"    -t, --text         Text mode (type commands)")
+        print(f"    -w, --web          Web dashboard mode")
         print(f"    -h, --help         This help")
         print(f"    mic_index          Microphone device index")
         sys.exit(0)
 
     from core.assistant import Assistant
-    ai = Assistant(mic_index=mic_index, text_mode=(mode == "text"))
-    if mode == "text":
+    try:
+        ai = Assistant(mic_index=mic_index, text_mode=(mode == "text"))
+    except ValueError as e:
+        print(f"\n  [ERROR] {e}")
+        print(f"  [FIX]   Run: python setup_keys.py")
+        print()
+        sys.exit(1)
+    if mode == "web":
+        from web.server import main as web_main
+        web_main()
+    elif mode == "text":
         ai.run_text()
     elif mode == "continuous":
         ai.run()

@@ -1,21 +1,36 @@
+"""Conversation memory with auto-summarization support."""
 from memory.vector_store import VectorStore
 
 
 class ConversationMemory:
     def __init__(self):
         self.store = VectorStore()
+        self._summary_interval = 20
 
-    def remember(self, key, value):
-        return self.store.add(key, value)
+    def remember(self, key, value, metadata=None):
+        return self.store.add(key, value, metadata=metadata)
 
-    def recall(self, query):
-        return self.store.search(query)
+    def recall(self, query, filter_metadata=None):
+        return self.store.search(query, filter_metadata=filter_metadata)
+
+    def auto_summarize(self, messages):
+        if len(messages) < self._summary_interval:
+            return None
+        user_msgs = [m.get("content", "") for m in messages if m.get("role") == "user"][-10:]
+        if not user_msgs:
+            return None
+        summary = " | ".join(u[:100] for u in user_msgs)
+        self.store.add("auto_summary", summary, metadata={"type": "auto_summary"})
+        return summary
 
     def list_memories(self):
         return self.store.get_all_keys()
 
     def forget(self, key):
         return self.store.delete(key)
+
+    def memory_count(self):
+        return self.store.count()
 
     def get_tool_definitions(self):
         return [

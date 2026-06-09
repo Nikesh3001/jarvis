@@ -9,11 +9,16 @@ ALLOWED_ROOTS = [
 
 def _safe_resolve(path):
     path = os.path.expanduser(path)
-    resolved = os.path.realpath(path)
-    for root in ALLOWED_ROOTS:
-        if resolved.startswith(root + os.sep) or resolved == root:
-            return resolved
-    raise PermissionError(f"Access denied: path is outside allowed directories")
+    before = os.path.abspath(path)
+    for _ in range(5):
+        resolved = os.path.realpath(path)
+        for root in ALLOWED_ROOTS:
+            if resolved.startswith(root + os.sep) or resolved == root:
+                return resolved
+        if resolved == before:
+            break
+        before = resolved
+    raise PermissionError("Access denied: path is outside allowed directories")
 
 
 class FileTools:

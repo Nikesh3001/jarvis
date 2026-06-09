@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import time
 import tempfile
@@ -19,50 +19,58 @@ def is_linux():
     return sys.platform == "linux" or sys.platform == "linux2"
 
 
-def get_platform():
-    if is_windows():
-        return "windows"
-    if is_macos():
-        return "macos"
-    return "linux"
-
-
 def find_chrome():
-    paths = []
     if is_windows():
-        paths = [
-            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
-            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
-            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
-        ]
+        import winreg
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe")
+            path, _ = winreg.QueryValueEx(key, "")
+            winreg.CloseKey(key)
+            return path
+        except (OSError, ImportError):
+            pass
+        for candidate in [
+            os.path.expanduser("~\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"),
+            os.environ.get("PROGRAMFILES", "") + "\\Google\\Chrome\\Application\\chrome.exe",
+            os.environ.get("PROGRAMFILES(X86)", "") + "\\Google\\Chrome\\Application\\chrome.exe",
+        ]:
+            if os.path.exists(candidate):
+                return candidate
+        return None
     elif is_macos():
         paths = [
             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
         ]
-    else:
-        paths = [
-            "/usr/bin/google-chrome",
-            "/usr/bin/google-chrome-stable",
-            "/usr/bin/chromium",
-            "/usr/bin/chromium-browser",
-            shutil.which("google-chrome") or "",
-            shutil.which("google-chrome-stable") or "",
-            shutil.which("chromium") or "",
-            shutil.which("chromium-browser") or "",
-        ]
-    for p in paths:
-        if p and os.path.exists(p):
-            return p
-    which = shutil.which("chrome") or shutil.which("google-chrome") or shutil.which("chromium")
-    if which:
+        for p in paths:
+            if os.path.exists(p):
+                return p
+        which = shutil.which("google-chrome") or shutil.which("chrome")
         return which
-    return None
+    else:
+        for candidate in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"]:
+            which = shutil.which(candidate)
+            if which:
+                return which
+        return None
+
+
+def get_platform():
+    if is_windows():
+        return "windows"
+    elif is_macos():
+        return "darwin"
+    return "linux"
 
 
 def open_file(path):
     if is_windows():
-        os.startfile(path)
+        safe = path.replace("\u0027", "\u0027\u0027")
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "Start-Process \u0027" + safe + "\u0027"],
+            capture_output=True, text=True, timeout=15
+        )
+        return r.returncode == 0
     elif is_macos():
         subprocess.Popen(["open", path])
     else:
@@ -71,8 +79,9 @@ def open_file(path):
 
 def launch_app(name):
     if is_windows():
+        safe = name.replace("\u0027", "\u0027\u0027")
         r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", "& $args[0]", "--", name],
+            ["powershell", "-NoProfile", "-Command", "Start-Process \u0027" + safe + "\u0027"],
             capture_output=True, text=True, timeout=15
         )
         return r.returncode == 0
@@ -127,4 +136,5 @@ def get_default_shell():
 
 
 def screenshot_path():
-    return os.path.join(tempfile.gettempdir(), f"friday_screenshot_{int(time.time())}.png")
+    return os.path.join(tempfile.gettempdir(), f"friday_screenshot_{__import__('secrets').token_hex(4)}_{int(time.time())}.png")
+

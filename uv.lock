@@ -1,0 +1,8 @@
+version = 1
+revision = 3
+requires-python = ">=3.10"
+
+[[package]]
+name = "jarvis"
+version = "3.5.0"
+source = { virtual = "." }

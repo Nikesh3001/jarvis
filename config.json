@@ -1,8 +1,0 @@
-{
-  "provider": "groq",
-  "models": {
-    "fast": "llama-3.1-8b-instant",
-    "smart": "llama-3.3-70b-versatile",
-    "deep": "llama-3.3-70b-versatile"
-  }
-}

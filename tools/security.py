@@ -4,6 +4,7 @@ import subprocess
 import socket
 from datetime import datetime
 from core.platform_utils import is_windows, is_macos, is_linux
+from core.ratelimit import check_rate
 
 
 class SecurityTool:
@@ -50,11 +51,15 @@ class SecurityTool:
             return "Firewall check failed"
 
     def check_open_ports(self, common_only=True):
+        if not check_rate("port_scan", rate=0.05, burst=1):
+            return "Rate limit exceeded. Port scans are rate-limited."
         try:
             if common_only:
                 ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1433, 1521, 3306, 3389, 5432, 6379, 8080, 8443, 27017]
             else:
                 ports = range(1, 1024)
+            if not common_only:
+                return "Full port scan disabled for performance. Use common_only=True (default)."
             open_ports = []
             for port in ports:
                 try:

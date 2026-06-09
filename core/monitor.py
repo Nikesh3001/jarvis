@@ -17,14 +17,11 @@ class ProactiveMonitor:
         self.suggestion_cooldown = 300
         self.event_log = []
         self.max_events = 100
-        self._psutil = None
-
-    @property
-    def psutil(self):
-        if self._psutil is None:
+        try:
             import psutil as _p
             self._psutil = _p
-        return self._psutil
+        except ImportError:
+            self._psutil = None
 
     def start(self):
         if self.running:
@@ -36,30 +33,35 @@ class ProactiveMonitor:
 
     def stop(self):
         self.running = False
+        if hasattr(self, '_stop_event'):
+            self._stop_event.set()
 
     def _run(self):
+        if not hasattr(self, '_stop_event'):
+            self._stop_event = threading.Event()
         while self.running:
             try:
                 self._check_resources()
                 self._check_idle_suggestions()
             except Exception:
                 pass
-            for _ in range(self.interval):
-                if not self.running:
-                    return
-                time.sleep(1)
+            self._stop_event.wait(timeout=self.interval)
+            if not self.running:
+                return
 
     def _check_resources(self):
         try:
-            mem = self.psutil.virtual_memory()
+            mem = self._psutil.virtual_memory()
             if mem.percent > 90:
                 self._log_event("HIGH_MEMORY", f"RAM at {mem.percent}%")
-            cpu = self.psutil.cpu_percent(interval=0.3)
+            cpu = self._psutil.cpu_percent(interval=0)
             if cpu > 90:
                 self._log_event("HIGH_CPU", f"CPU at {cpu}%")
-            for part in self.psutil.disk_partitions():
+            for part in self._psutil.disk_partitions():
+                if 'network' in part.opts or part.fstype in ('cifs', 'nfs', 'autofs', 'smb'):
+                    continue
                 try:
-                    usage = self.psutil.disk_usage(part.mountpoint)
+                    usage = self._psutil.disk_usage(part.mountpoint)
                     if usage.percent > 95:
                         self._log_event("LOW_DISK", f"{part.mountpoint} at {usage.percent}%")
                 except Exception:
@@ -126,8 +128,8 @@ class ProactiveMonitor:
 
     def get_status(self):
         try:
-            mem = self.psutil.virtual_memory()
-            cpu = self.psutil.cpu_percent(interval=0.3)
+            mem = self._psutil.virtual_memory()
+            cpu = self._psutil.cpu_percent(interval=0)
             uptime_secs = int(time.time() - self.psutil.boot_time())
             days, rem = divmod(uptime_secs, 86400)
             hours, rem = divmod(rem, 3600)

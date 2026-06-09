@@ -43,12 +43,15 @@ class VectorStore:
         except Exception as e:
             return f"Memory add error: {e}"
 
-    def search(self, query, n_results=3):
+    def search(self, query, n_results=3, filter_metadata=None):
         try:
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=n_results
-            )
+            kwargs = {
+                "query_texts": [query],
+                "n_results": n_results,
+            }
+            if filter_metadata:
+                kwargs["where"] = filter_metadata
+            results = self.collection.query(**kwargs)
             if not results["documents"] or not results["documents"][0]:
                 return "No memories found."
             lines = []
@@ -63,9 +66,12 @@ class VectorStore:
         except Exception as e:
             return f"Memory search error: {e}"
 
-    def get_all_keys(self):
+    def get_all_keys(self, filter_metadata=None):
         try:
-            results = self.collection.get()
+            kwargs = {}
+            if filter_metadata:
+                kwargs["where"] = filter_metadata
+            results = self.collection.get(**kwargs)
             if not results["metadatas"]:
                 return "No memories stored."
             keys = [m.get("key", "?") for m in results["metadatas"]]
@@ -80,3 +86,9 @@ class VectorStore:
             return f"Forgot: {key}"
         except Exception as e:
             return f"Memory delete error: {e}"
+
+    def count(self):
+        try:
+            return self.collection.count()
+        except Exception:
+            return 0

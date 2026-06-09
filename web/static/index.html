@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FRIDAY Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="arc-reactor"></div>
+        <h1><span>F</span>.R.I.D.A.Y. <span>Dashboard</span></h1>
+      </div>
+      <div class="header-right">
+        <span class="model-badge" id="modelBadge">loading...</span>
+        <div class="status-dot" id="statusDot" title="Connected"></div>
+      </div>
+    </header>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <!-- System Stats -->
+      <div class="sidebar-section">
+        <h3>System</h3>
+        <div class="stat-row">
+          <span class="stat-label">CPU</span>
+          <span class="stat-value" id="cpuVal">--%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill green" id="cpuBar" style="width:0%"></div></div>
+
+        <div class="stat-row" style="margin-top:8px">
+          <span class="stat-label">RAM</span>
+          <span class="stat-value" id="ramVal">--</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill green" id="ramBar" style="width:0%"></div></div>
+
+        <div class="stat-row" style="margin-top:8px">
+          <span class="stat-label">Disk</span>
+          <span class="stat-value" id="diskVal">--</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill green" id="diskBar" style="width:0%"></div></div>
+      </div>
+
+      <!-- AI Stats -->
+      <div class="sidebar-section">
+        <h3>AI Engine</h3>
+        <div class="stat-row">
+          <span class="stat-label">Provider</span>
+          <span class="stat-value blue" id="providerVal">--</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Tools</span>
+          <span class="stat-value" id="toolsVal">--</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">API Calls</span>
+          <span class="stat-value" id="callsVal">--</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Errors</span>
+          <span class="stat-value" id="errorsVal">--</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">AI Time</span>
+          <span class="stat-value" id="aiTimeVal">--</span>
+        </div>
+      </div>
+
+      <!-- Session -->
+      <div class="sidebar-section">
+        <h3>Session</h3>
+        <div class="stat-row">
+          <span class="stat-label">Uptime</span>
+          <span class="stat-value" id="uptimeVal">--</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Commands</span>
+          <span class="stat-value" id="commandsVal">--</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Version</span>
+          <span class="stat-value" id="versionVal">--</span>
+        </div>
+      </div>
+
+      <!-- Toggles -->
+      <div class="sidebar-section">
+        <h3>Modes</h3>
+        <div class="stat-row">
+          <span class="stat-label">Stark Mode</span>
+          <span class="stat-value" id="starkVal">--</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Safe Mode</span>
+          <span class="stat-value" id="safeVal">--</span>
+        </div>
+      </div>
+
+      <!-- Model Switcher -->
+      <div class="sidebar-section">
+        <h3>Model</h3>
+        <div class="toggle-group" id="modelSwitcher">
+          <button class="toggle-btn" data-model="fast">Fast</button>
+          <button class="toggle-btn active" data-model="smart">Smart</button>
+          <button class="toggle-btn" data-model="deep">Deep</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Chat Area -->
+    <main class="chat-area">
+      <div class="messages" id="messages">
+        <div class="welcome" id="welcome">
+          <div class="big-reactor"></div>
+          <h2>FRIDAY</h2>
+          <p>Female Replacement Intelligent Digital Assistant Youth. Ask me anything — I can search the web, run code, manage files, and much more.</p>
+        </div>
+      </div>
+
+      <div class="input-bar">
+        <div class="input-wrapper">
+          <textarea id="userInput" placeholder="Message FRIDAY..." rows="1"></textarea>
+          <button class="send-btn" id="sendBtn" title="Send">&#9654;</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

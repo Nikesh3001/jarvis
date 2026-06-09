@@ -2,9 +2,11 @@ import os
 import json
 import subprocess
 import webbrowser
+import time
 from pathlib import Path
 
 from core.platform_utils import is_windows, is_macos, is_linux, find_chrome, open_file, launch_app as xlaunch, notify
+from core.ratelimit import check_rate
 
 DEFAULT_PROFILE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "chrome_default_profile.json")
 
@@ -19,10 +21,21 @@ class Automator:
                 f"'{action}' requires safe_mode to be disabled. Say 'trust me' or 'safe mode off' first."
             )
 
+    @staticmethod
+    def _safe_path(target):
+        bad = set(';&|`$(){}[]!#~<>*?\n\r')
+        if any(c in target for c in bad):
+            return False
+        if target.startswith(("\\\\", "//")):
+            return False
+        return True
+
     def launch_app(self, name_or_path, **kwargs):
         target = name_or_path
         if not target:
             return "No app name provided."
+        if not self._safe_path(target):
+            return "Launch failed: invalid characters in target"
         try:
             if "chrome" in target.lower():
                 chrome = self._find_chrome()
@@ -32,8 +45,11 @@ class Automator:
                     subprocess.Popen(cmd, shell=False)
                     return f"Launched Chrome"
             if os.path.exists(target):
-                open_file(target)
-                return f"Launched: {target}"
+                resolved = os.path.realpath(target)
+                if not self._safe_path(resolved):
+                    return "Launch failed: unsafe path"
+                open_file(resolved)
+                return f"Launched: {resolved}"
             if xlaunch(target):
                 return f"Launched: {target}"
             if self._find_chrome():
@@ -236,10 +252,14 @@ class Automator:
             return "Scroll failed"
 
     def screenshot(self, region=None):
+        if not check_rate("screenshot", rate=0.2, burst=3):
+            return "Rate limit exceeded. Too many screenshots."
         try:
             import pyautogui
+            import tempfile
             token = __import__('secrets').token_hex(8)
-            path = os.path.join(os.environ["TEMP"], f"friday_ss_{token}.png")
+            path = os.path.join(tempfile.gettempdir(), f"friday_ss_{token}.png")
+            self._cleanup_old_screenshots()
             if region:
                 im = pyautogui.screenshot(region=region)
             else:
@@ -248,14 +268,34 @@ class Automator:
             return f"Screenshot saved: {path}"
         except ImportError:
             return "pyautogui not installed"
-        except Exception as e:
+        except Exception:
             return "Screenshot failed"
+
+    def _cleanup_old_screenshots(self, keep=10):
+        try:
+            import tempfile
+            tmp = tempfile.gettempdir()
+            shots = []
+            for entry in os.scandir(tmp):
+                if entry.name.startswith("friday_ss_") and entry.name.endswith(".png"):
+                    shots.append((entry.path, entry.stat().st_mtime))
+            shots.sort(key=lambda x: x[1])
+            for path, _ in shots[:-keep]:
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def get_clipboard(self):
         try:
+            self._require_confirmation("get_clipboard")
             import pyperclip
             text = pyperclip.paste()
             return f"Clipboard: {text[:500]}" if text else "Clipboard is empty"
+        except PermissionError as e:
+            return str(e)
         except ImportError:
             return "pyperclip not installed"
         except Exception as e:
@@ -263,9 +303,12 @@ class Automator:
 
     def set_clipboard(self, text):
         try:
+            self._require_confirmation("set_clipboard")
             import pyperclip
             pyperclip.copy(text)
             return "Clipboard set"
+        except PermissionError as e:
+            return str(e)
         except ImportError:
             return "pyperclip not installed"
         except Exception as e:
@@ -288,41 +331,55 @@ class Automator:
                 capture_output=True, text=True, timeout=15
             )
             import json
-            data = json.loads(r.stdout)
-            if isinstance(data, dict):
-                data = [data]
-            names = [d["Name"] for d in data if d.get("Name")]
+            try:
+                data = json.loads(r.stdout)
+                if isinstance(data, dict):
+                    data = [data]
+                if not isinstance(data, list):
+                    return "Apps list failed"
+            except (json.JSONDecodeError, TypeError):
+                return "Apps list failed"
+            names = [d["Name"] for d in data if isinstance(d, dict) and d.get("Name")]
             return "Installed apps:\n" + "\n".join(f"  {i+1}. {n}" for i, n in enumerate(names))
         except Exception as e:
             return "Apps list failed"
 
+    _apps_cache = None
+    _apps_cache_time = 0
+    _APPS_CACHE_TTL = 120
+
+    def _build_apps_cache(self):
+        self._apps_cache = set()
+        try:
+            import json
+            combined = " | ".join([
+                "Get-StartApps | Select-Object Name",
+                "Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object DisplayName | Select-Object @{n='N';e={$_.DisplayName}}",
+                "Get-ChildItem 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs' -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue | Select-Object @{n='N';e={$_.BaseName}}",
+                "[Environment]::GetEnvironmentVariable('PATH','User') -split ';' | Where-Object { $_ } | Get-ChildItem -Filter '*.exe' -ErrorAction SilentlyContinue | Select-Object @{n='N';e={$_.BaseName}}"
+            ])
+            ps_script = f"$results = @(); $results += {combined}; $results | Where-Object {{ $_.N }} | Select-Object -Unique -First 200 N | ConvertTo-Json"
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                capture_output=True, text=True, timeout=30
+            )
+            if r.stdout.strip():
+                data = json.loads(r.stdout)
+                if isinstance(data, dict):
+                    data = [data]
+                for d in data if isinstance(data, list) else []:
+                    name = d.get("N")
+                    if name and name.strip():
+                        self._apps_cache.add(name.strip())
+        except Exception:
+            pass
+        self._apps_cache_time = time.time()
+
     def list_all_apps(self, search=None):
         try:
-            all_apps = set()
-            ps_cmds = [
-                "Get-StartApps | Select-Object Name | ConvertTo-Json",
-                "Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object DisplayName | Select-Object DisplayName | ConvertTo-Json",
-                "Get-ChildItem 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs' -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue | Select-Object BaseName | ConvertTo-Json",
-                "[Environment]::GetEnvironmentVariable('PATH','User') -split ';' | Where-Object { $_ } | Get-ChildItem -Filter '*.exe' -ErrorAction SilentlyContinue | Select-Object BaseName | ConvertTo-Json",
-            ]
-            import json
-            for cmd in ps_cmds:
-                try:
-                    r = subprocess.run(
-                        ["powershell", "-NoProfile", "-Command", cmd],
-                        capture_output=True, text=True, timeout=15
-                    )
-                    if r.stdout.strip():
-                        data = json.loads(r.stdout)
-                        if isinstance(data, dict):
-                            data = [data]
-                        for d in data:
-                            name = d.get("Name") or d.get("DisplayName") or d.get("BaseName")
-                            if name and name.strip():
-                                all_apps.add(name.strip())
-                except Exception:
-                    pass
-            sorted_apps = sorted(all_apps, key=str.lower)
+            if not self._apps_cache or time.time() - self._apps_cache_time > self._APPS_CACHE_TTL:
+                self._build_apps_cache()
+            sorted_apps = sorted(self._apps_cache, key=str.lower)
             if search:
                 search_lower = search.lower()
                 sorted_apps = [a for a in sorted_apps if search_lower in a.lower()]
@@ -337,10 +394,10 @@ class Automator:
 
     def get_tool_definitions(self):
         return [
-            {"type": "function", "function": {"name": "launch_app", "description": "Launch app by name or executable path (e.g. chrome, notepad, calculator, git, code, spotify). Tries Start Menu, PATH, and common locations.", "parameters": {"type": "object", "properties": {"name_or_path": {"type": "string", "description": "App name or path"}}, "required": ["name_or_path"]}}},
+            {"type": "function", "function": {"name": "launch_app", "description": "Launch a local application by name or path (e.g. 'notepad', 'calculator', 'code', 'chrome'). NOT for websites — use browse_url for that.", "parameters": {"type": "object", "properties": {"name_or_path": {"type": "string", "description": "App name (e.g. 'notepad') or full path to executable"}}, "required": ["name_or_path"]}}},
             {"type": "function", "function": {"name": "open_file", "description": "Open file with default app", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "File path"}}, "required": ["path"]}}},
             {"type": "function", "function": {"name": "open_folder", "description": "Open folder in Explorer", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Folder path"}}, "required": ["path"]}}},
-            {"type": "function", "function": {"name": "browse_url", "description": "Open URL in Chrome browser", "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "Full URL (https://...)"}}, "required": ["url"]}}},
+            {"type": "function", "function": {"name": "browse_url", "description": "Open a website in Chrome. Use for any URL or domain name (e.g. 'github.com', 'instagram.com', 'youtube.com'). NOT for launching local apps.", "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "URL or domain name (e.g. 'github.com', 'https://example.com/page')"}}, "required": ["url"]}}},
             {"type": "function", "function": {"name": "search_web", "description": "Google search in browser", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "Search query"}}, "required": ["query"]}}},
             {"type": "function", "function": {"name": "send_keys", "description": "Type text via simulated keyboard", "parameters": {"type": "object", "properties": {"text": {"type": "string", "description": "Text to type"}}, "required": ["text"]}}},
             {"type": "function", "function": {"name": "press_key", "description": "Press a single keyboard key (enter, tab, esc, up, down, ctrl, alt, shift, win)", "parameters": {"type": "object", "properties": {"key": {"type": "string", "description": "Key name"}}, "required": ["key"]}}},
