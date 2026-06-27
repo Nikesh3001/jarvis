@@ -27,6 +27,7 @@ tools/bin/*.exe
 tools/bin/*.dll
 tools/bin/*.bat
 tools/bin/*.sh
+tools/bin/nikto
 
 # Runtime artifacts
 cyber_*.txt
