@@ -13,7 +13,10 @@ class WebTools:
     @property
     def ddgs(self):
         if self._ddgs is None:
-            from duckduckgo_search import DDGS
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS
             self._ddgs = DDGS
         return self._ddgs
 
@@ -43,10 +46,11 @@ class WebTools:
                 href = r.get("href", "")
                 title = r.get("title", "")
                 body = r.get("body", "")
-                lines.append(f"{i+1}. {title} - {href}")
-            return "Search results:\n" + "\n".join(lines)
+                snippet = (body[:150] + "...") if len(body) > 150 else body
+                lines.append(f"{i+1}. {title}\n   {href}\n   {snippet}")
+            return "Search results:\n" + "\n\n".join(lines)
         except Exception as e:
-            return "Search failed"
+            return f"Search failed ({type(e).__name__})"
 
     def fetch(self, url):
         try:
@@ -82,12 +86,12 @@ class WebTools:
         except ValueError as e:
             return f"Blocked: {e}"
         except Exception as e:
-            return "Fetch failed"
+            return f"Fetch failed ({type(e).__name__})"
 
     def get_tool_definitions(self):
         return [
-            {"type": "function", "function": {"name": "web_search", "description": "Search web for query", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "Search"}, "max_results": {"type": "integer", "description": "Count", "default": 5}}, "required": ["query"]}}},
-            {"type": "function", "function": {"name": "web_fetch", "description": "Fetch URL content", "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "URL"}}, "required": ["url"]}}},
+            {"type": "function", "function": {"name": "web_search", "description": "Search the internet using DuckDuckGo for current information, news, facts, or answers to questions. Use this for any query that needs up-to-date, real-time, or web-based information.", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "The search query or question to look up on the web"}, "max_results": {"type": "integer", "description": "Number of search results to return (1-10)", "default": 5}}, "required": ["query"]}}},
+            {"type": "function", "function": {"name": "web_fetch", "description": "Fetch and extract readable text content from a URL. Returns the page title and main article text stripped of HTML markup. Use this to read articles, documentation, or any web page content.", "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "The full URL (including https://) of the web page to fetch"}}, "required": ["url"]}}},
         ]
 
     def get_handler(self, name):

@@ -3,6 +3,8 @@ import shutil
 import glob
 from pathlib import Path
 
+from core.ratelimit import check_rate
+
 
 ALLOWED_ROOTS = [
     os.path.realpath(os.path.expanduser("~")),
@@ -11,34 +13,30 @@ ALLOWED_ROOTS = [
 
 def _safe_resolve(path):
     path = os.path.expanduser(path)
-    before = os.path.abspath(path)
-    for _ in range(5):
-        try:
-            resolved = os.path.realpath(path)
-        except OSError:
-            resolved = os.path.abspath(path)
-        for root in ALLOWED_ROOTS:
-            if resolved == root or resolved.startswith(root + os.sep):
-                return resolved
-        if resolved == before:
-            break
-        before = resolved
+    path = os.path.abspath(path)
+    try:
+        resolved = os.path.realpath(path)
+    except OSError:
+        resolved = path
+    for root in ALLOWED_ROOTS:
+        if resolved == root or os.path.commonpath([resolved, root]) == root:
+            return resolved
     raise PermissionError("Access denied: path is outside allowed directories")
 
 
 class FileEditor:
     def write_file(self, path, content):
+        if not check_rate("file_write", rate=1, burst=5):
+            return "Rate limit exceeded. Please wait before writing more files."
         path = _safe_resolve(path)
-        # Symlink race check: verify path still resolves to allowed dir
-        resolved = _safe_resolve(path)
-        if resolved != path:
-            raise PermissionError("Access denied: symlink race detected")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
         return f"Written {len(content)} bytes to {path}"
 
     def edit_file(self, path, old_string, new_string):
+        if not check_rate("file_edit", rate=1, burst=5):
+            return "Rate limit exceeded. Please wait before editing more files."
         path = _safe_resolve(path)
         if not os.path.exists(path):
             return f"File not found: {path}"
@@ -46,20 +44,16 @@ class FileEditor:
             content = f.read()
         if old_string not in content:
             return f"String not found in {path}"
-        resolved = _safe_resolve(path)
-        if resolved != path:
-            raise PermissionError("Access denied: symlink race detected")
         with open(path, "w", encoding="utf-8") as f:
             f.write(content.replace(old_string, new_string))
         count = content.count(old_string)
         return f"Replaced {count} occurrence(s) in {path}"
 
     def append_file(self, path, content):
+        if not check_rate("file_append", rate=1, burst=5):
+            return "Rate limit exceeded. Please wait before appending to more files."
         path = _safe_resolve(path)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        resolved = _safe_resolve(path)
-        if os.path.exists(path) and resolved != path:
-            raise PermissionError("Access denied: symlink race detected")
         with open(path, "a", encoding="utf-8") as f:
             f.write(content)
         return f"Appended {len(content)} bytes to {path}"
@@ -79,12 +73,16 @@ class FileEditor:
         return f"Contents of {path}:\n" + "\n".join(items[:100])
 
     def move_file(self, src, dst):
+        if not check_rate("file_move", rate=0.5, burst=3):
+            return "Rate limit exceeded. Please wait before moving more files."
         src, dst = _safe_resolve(src), _safe_resolve(dst)
         Path(dst).parent.mkdir(parents=True, exist_ok=True)
         shutil.move(src, dst)
         return f"Moved {src} -> {dst}"
 
     def copy_file(self, src, dst):
+        if not check_rate("file_copy", rate=0.5, burst=3):
+            return "Rate limit exceeded. Please wait before copying more files."
         src, dst = _safe_resolve(src), _safe_resolve(dst)
         Path(dst).parent.mkdir(parents=True, exist_ok=True)
         if os.path.isdir(src):
@@ -94,10 +92,9 @@ class FileEditor:
         return f"Copied {src} -> {dst}"
 
     def delete_file(self, path):
+        if not check_rate("file_delete", rate=0.5, burst=3):
+            return "Rate limit exceeded. Please wait before deleting more files."
         path = _safe_resolve(path)
-        resolved = _safe_resolve(path)
-        if resolved != path:
-            raise PermissionError("Access denied: symlink race detected")
         if not os.path.exists(path):
             return f"File not found: {path}"
         if os.path.isdir(path):
@@ -129,7 +126,6 @@ class FileEditor:
             return "Access denied"
         matches = []
         for file in glob.glob(os.path.join(path, "**", include), recursive=True):
-            # Verify each resolved file is within allowed dirs
             try:
                 resolved_file = _safe_resolve(file)
             except PermissionError:

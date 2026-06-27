@@ -108,6 +108,29 @@
           <button class="toggle-btn" data-model="deep">Deep</button>
         </div>
       </div>
+
+      <!-- Voice / TTS -->
+      <div class="sidebar-section" id="voiceSection">
+        <h3>Voice Output</h3>
+        <div class="voice-controls">
+          <button class="voice-btn active" id="voiceToggle" title="Toggle voice output">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <span>Speak</span>
+          </button>
+          <button class="voice-btn" id="voiceStopBtn" title="Stop speaking">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            <span>Stop</span>
+          </button>
+        </div>
+        <div class="voice-setting">
+          <label>Voice</label>
+          <select id="voiceSelect" class="voice-select"><option>Loading voices…</option></select>
+        </div>
+        <div class="voice-setting">
+          <label>Speed <span id="voiceSpeedVal" class="speed-val">1.0x</span></label>
+          <input type="range" id="voiceSpeed" min="0.5" max="2.0" step="0.1" value="1.0" class="voice-slider">
+        </div>
+      </div>
     </aside>
 
     <!-- Chat Area -->

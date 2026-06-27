@@ -271,7 +271,7 @@ class CodeIndex:
         except ValueError:
             return False
 
-    def index_project(self, root_path):
+    def index_project(self, root_path, max_files=500, max_depth=10):
         if not self._is_allowed_path(root_path):
             return "Access denied: path is outside allowed directories for indexing"
         self._lazy_init()
@@ -279,6 +279,8 @@ class CodeIndex:
         files = self._scan_files(root)
         if not files:
             return f"No indexable files found in {root}"
+        if len(files) > max_files:
+            files = files[:max_files]
 
         count = 0
         ids = []

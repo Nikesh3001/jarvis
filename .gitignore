@@ -15,3 +15,28 @@ venv/
 *.log
 
 config.json
+.idea/
+code_index/
+user_profile.json
+test_input.txt
+uv.lock
+.rate_state
+
+# Tool binaries (install manually)
+tools/bin/*.exe
+tools/bin/*.dll
+tools/bin/*.bat
+tools/bin/*.sh
+
+# Runtime artifacts
+cyber_*.txt
+web_*.txt
+web_err*.txt
+web_out*.txt
+
+# Test artifacts
+plans/
+test_server.py
+
+# Embedded git repos
+tools/bin/nikto

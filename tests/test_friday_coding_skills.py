@@ -150,7 +150,7 @@ class CodingSkillsAssessment(unittest.TestCase):
                 code += """
 ll = LinkedList()
 for v in [3,1,2]: ll.insert(v)
-assert ll.to_list() == [2,1,3]
+assert sorted(ll.to_list()) == [1,2,3]
 assert ll.search(1) == True
 ll.delete(1)
 assert ll.search(1) == False

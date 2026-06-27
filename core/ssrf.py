@@ -14,56 +14,42 @@ _PRIVATE_NETWORKS = [
     ipaddress.ip_network("::1/128"),
     ipaddress.ip_network("fc00::/7"),
     ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("100.64.0.0/10"),
 ]
 
-_CLOUD_METADATA = {"169.254.169.254", "169.254.169.253", "100.100.100.200"}
+_CLOUD_METADATA = {
+    "169.254.169.254",
+    "169.254.169.253",
+    "100.100.100.200",
+    "169.254.169.250",
+    "169.254.169.251",
+    "169.254.169.252",
+    "169.254.42.42",
+    "192.0.2.0",
+    "198.51.100.0",
+    "203.0.113.0",
+}
 
 
 def _resolve_all_ips(hostname):
     try:
         addrinfo = socket.getaddrinfo(hostname, 80)
-        return list(set(sockaddr[0] for _, _, _, _, sockaddr in addrinfo))
+        ips = list(set(sockaddr[0] for _, _, _, _, sockaddr in addrinfo))
+        return ips
     except OSError:
         return []
 
 
-def _get_dns_ttl(hostname):
-    try:
-        _, _, answers = __import__('dns.resolver', fromlist=['resolve']).resolve(hostname, 'A')
-        return min(ans.ttl for ans in answers)
-    except Exception:
-        return None
-
-
-_DNS_REBINDING_AVAILABLE = None
-
-
 def _check_dns_rebinding(hostname):
-    global _DNS_REBINDING_AVAILABLE
-    if _DNS_REBINDING_AVAILABLE is False:
-        return False
     try:
-        import dns.resolver
-        _DNS_REBINDING_AVAILABLE = True
-    except ImportError:
-        if _DNS_REBINDING_AVAILABLE is None:
-            print("  [SECURITY] WARNING: dnspython not installed — DNS rebinding detection disabled")
-            print("  [SECURITY] Install: pip install dnspython")
-            _DNS_REBINDING_AVAILABLE = False
-        return False
-    try:
-        _, _, answers = dns.resolver.resolve(hostname, 'A')
-        ttl = min(ans.ttl for ans in answers)
-        if ttl is not None and ttl < 60:
-            time.sleep(1)
-            ips1 = _resolve_all_ips(hostname)
-            time.sleep(1)
-            ips2 = _resolve_all_ips(hostname)
-            if set(ips1) != set(ips2):
-                return True
+        ips1 = _resolve_all_ips(hostname)
+        if not ips1:
+            return False
+        time.sleep(0.5)
+        ips2 = _resolve_all_ips(hostname)
+        return set(ips1) != set(ips2)
     except Exception:
-        pass
-    return False
+        return False
 
 
 def is_ssrf_blocked(hostname):
@@ -96,7 +82,9 @@ def is_ssrf_blocked(hostname):
     return False
 
 
-def validate_url(url):
+def validate_url(url, enforce_https=False, max_length=8192):
+    if len(url) > max_length:
+        raise ValueError(f"URL exceeds maximum length of {max_length} characters")
     if not url.startswith(("http://", "https://")):
         if "." not in url:
             raise ValueError("Invalid URL")
@@ -104,8 +92,14 @@ def validate_url(url):
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError("Only HTTP/HTTPS URLs are allowed")
+    if enforce_https and parsed.scheme == "http":
+        raise ValueError("HTTP URLs are not allowed; use HTTPS")
+    if not parsed.hostname:
+        raise ValueError("URL must have a valid hostname")
     if is_ssrf_blocked(parsed.hostname):
         raise ValueError("Access to internal or private network addresses is not allowed")
+    if _check_dns_rebinding(parsed.hostname):
+        raise ValueError("DNS rebinding attack detected for this hostname")
     return url
 
 
@@ -120,24 +114,10 @@ def safe_httpx_get(url, client, max_redirects=10, **kwargs):
         parsed = urlparse(current_url)
         if is_ssrf_blocked(parsed.hostname):
             raise ValueError("Redirect target is blocked")
-        if _check_dns_rebinding(parsed.hostname):
-            raise ValueError("DNS rebinding detected for redirect target")
 
         response = client.get(current_url, **kwargs)
 
-        if response.is_redirect or response.is_permanent_redirect:
-            location = response.headers.get("Location")
-            if not location:
-                return response
-            redirect_url = urljoin(current_url, location)
-            if redirect_url in visited:
-                raise ValueError("Redirect loop detected")
-            visited.add(redirect_url)
-            validate_url(redirect_url)
-            current_url = redirect_url
-            continue
-
-        if response.has_redirect_location:
+        if response.is_redirect or response.has_redirect_location:
             location = response.headers.get("Location")
             if not location:
                 return response

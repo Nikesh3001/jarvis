@@ -4,6 +4,8 @@ Provides a browser-based UI for interacting with FRIDAY.
 Run with: python -m web.server --web
 """
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -11,26 +13,78 @@ import datetime
 import threading
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from core.ratelimit import check_rate
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from core.assistant import VERSION
+
+API_KEY = os.environ.get("FRIDAY_API_KEY", "")
+_CORS_ORIGINS_STR = os.environ.get("FRIDAY_CORS_ORIGINS",
+                                     "http://127.0.0.1:8080,http://localhost:8080")
+
+
+def _parse_cors_origins(raw):
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    return [o for o in origins if o.startswith("http://") or o.startswith("https://")]
+
+
+def _verify_api_key(key):
+    if not API_KEY:
+        return True
+    if not key:
+        return False
+    return hmac.compare_digest(key, API_KEY)
+
+
+_NOT_AUTH_REASON = "Authentication required. Set FRIDAY_API_KEY env var or disable with empty key."
+
+
+async def _verify_request(request):
+    if not API_KEY:
+        return
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    else:
+        token = request.query_params.get("api_key", "")
+    if not _verify_api_key(token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NOT_AUTH_REASON)
+
 
 app = FastAPI(title="FRIDAY Dashboard", docs_url=None, redoc_url=None)
 
-# CORS origins: configurable via FRIDAY_CORS_ORIGINS env var (comma-separated)
-_cors_origins = os.environ.get("FRIDAY_CORS_ORIGINS", "http://127.0.0.1:8080,http://localhost:8080").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in _cors_origins if o.strip()],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_parse_cors_origins(_CORS_ORIGINS_STR),
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["content-type", "authorization"],
 )
 
-# Global assistant instance (lazy, thread-safe)
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "connect-src 'self' ws://127.0.0.1:* ws://localhost:*; "
+        "img-src 'self' data:; "
+        "font-src 'self'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
 _assistant = None
 _assistant_lock = threading.Lock()
 
@@ -47,7 +101,12 @@ def get_assistant():
         return _assistant
 
 
-# ── REST Endpoints ──────────────────────────────────────────────────────────
+def is_valid_origin(origin):
+    if not origin:
+        return False
+    allowed = _parse_cors_origins(_CORS_ORIGINS_STR)
+    return origin in allowed or origin.rstrip("/") in allowed
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -56,7 +115,11 @@ async def index():
 
 
 @app.get("/api/status")
-async def api_status():
+async def api_status(request: Request):
+    try:
+        await _verify_request(request)
+    except HTTPException:
+        raise
     try:
         asst = get_assistant()
         import psutil
@@ -68,15 +131,12 @@ async def api_status():
         hc = asst.brain.health_check()
         return {
             "ok": True,
-            "version": asst.VERSION,
+            "version": VERSION,
             "model": asst.brain.current_model,
             "provider": hc.get("provider", "?"),
-            "tools_registered": hc.get("tools_registered", 0),
-            "total_calls": hc.get("total_calls", 0),
-            "total_errors": hc.get("total_errors", 0),
-            "total_time": hc.get("total_time_seconds", 0),
             "stark_mode": asst.stark_mode,
             "safe_mode": asst.safe_mode,
+            "rate_limited": getattr(asst.brain, 'rate_limited', False),
             "uptime_minutes": int(uptime.total_seconds() / 60),
             "commands_run": asst.commands_run,
             "cpu_percent": cpu,
@@ -87,23 +147,39 @@ async def api_status():
             "disk_used_gb": round(disk.used / (1024**3), 1),
             "disk_total_gb": round(disk.total / (1024**3), 1),
         }
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except HTTPException:
+        raise
+    except Exception:
+        return {"ok": False, "error": "Status check failed"}
 
 
 @app.get("/api/conversations")
-async def api_conversations():
+async def api_conversations(request: Request):
     try:
+        await _verify_request(request)
+    except HTTPException:
+        raise
+    try:
+        if not check_rate("web_api_conversations", rate=2, burst=5):
+            return {"ok": False, "error": "Rate limit exceeded"}
         asst = get_assistant()
         convos = asst._list_conversations()
         return {"ok": True, "conversations": convos}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except HTTPException:
+        raise
+    except Exception:
+        return {"ok": False, "error": "Failed to list conversations"}
 
 
 @app.get("/api/tools")
-async def api_tools():
+async def api_tools(request: Request):
     try:
+        await _verify_request(request)
+    except HTTPException:
+        raise
+    try:
+        if not check_rate("web_api_tools", rate=5, burst=10):
+            return {"ok": False, "error": "Rate limit exceeded"}
         asst = get_assistant()
         tools = [
             {
@@ -113,20 +189,27 @@ async def api_tools():
             for td in asst.brain.tool_definitions
         ]
         return {"ok": True, "tools": tools, "count": len(tools)}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except HTTPException:
+        raise
+    except Exception:
+        return {"ok": False, "error": "Failed to list tools"}
 
 
 _MAX_MESSAGE_LENGTH = 10000
 
+
 @app.post("/api/chat")
 async def api_chat(body: dict):
-    """Non-streaming chat endpoint."""
     message = body.get("message", "").strip()
+    auth_key = body.get("api_key", "")
+    if not _verify_api_key(auth_key):
+        return {"ok": False, "error": _NOT_AUTH_REASON}
     if not message:
         return {"ok": False, "error": "Empty message"}
     if len(message) > _MAX_MESSAGE_LENGTH:
         return {"ok": False, "error": f"Message too long (max {_MAX_MESSAGE_LENGTH} chars)"}
+    if not check_rate("web_api_chat", rate=0.5, burst=3):
+        return {"ok": False, "error": "Rate limit exceeded. Please wait before sending more messages."}
     try:
         asst = get_assistant()
         asst.conversation.append({"role": "user", "content": message})
@@ -135,61 +218,83 @@ async def api_chat(body: dict):
         asst._save_conversation()
         asst._post_process(message)
         return {"ok": True, "response": result_text}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except Exception:
+        return {"ok": False, "error": "Chat request failed"}
 
 
 @app.post("/api/command")
 async def api_command(body: dict):
-    """Process a direct command (suit status, help, etc)."""
     command = body.get("command", "").strip()
+    auth_key = body.get("api_key", "")
+    if not _verify_api_key(auth_key):
+        return {"ok": False, "error": _NOT_AUTH_REASON}
     if not command:
         return {"ok": False, "error": "Empty command"}
     if len(command) > _MAX_MESSAGE_LENGTH:
         return {"ok": False, "error": f"Command too long (max {_MAX_MESSAGE_LENGTH} chars)"}
+    if not check_rate("web_api_command", rate=0.5, burst=3):
+        return {"ok": False, "error": "Rate limit exceeded. Please wait before sending more commands."}
     try:
         asst = get_assistant()
         handled = asst._handle_command(command)
         if handled:
             return {"ok": True, "handled": True, "response": "(command executed)"}
         return {"ok": True, "handled": False}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except Exception:
+        return {"ok": False, "error": "Command execution failed"}
 
 
 @app.post("/api/model")
 async def api_model(body: dict):
-    """Switch the AI model."""
     model = body.get("model", "").strip()
+    auth_key = body.get("api_key", "")
+    if not _verify_api_key(auth_key):
+        return {"ok": False, "error": _NOT_AUTH_REASON}
     if not model:
         return {"ok": False, "error": "No model specified"}
+    if not check_rate("web_api_model", rate=1, burst=3):
+        return {"ok": False, "error": "Rate limit exceeded"}
     try:
         asst = get_assistant()
         asst.brain.current_model = model
         return {"ok": True, "model": model}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except Exception:
+        return {"ok": False, "error": "Failed to switch model"}
 
 
 @app.get("/api/models")
-async def api_models():
+async def api_models(request: Request):
+    try:
+        await _verify_request(request)
+    except HTTPException:
+        raise
     try:
         asst = get_assistant()
         models = asst.brain.list_models()
         return {"ok": True, "models": models, "current": asst.brain.current_model}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except HTTPException:
+        raise
+    except Exception:
+        return {"ok": False, "error": "Failed to list models"}
 
-
-# ── WebSocket for streaming chat ────────────────────────────────────────────
 
 @app.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket):
+    origin = websocket.headers.get("origin", "")
+    if not is_valid_origin(origin):
+        await websocket.close(code=4001, reason="Origin not allowed")
+        return
     await websocket.accept()
     try:
         while True:
             data = await websocket.receive_text()
             payload = json.loads(data)
+            ws_api_key = payload.get("api_key", "")
+            if not _verify_api_key(ws_api_key):
+                await websocket.send_json({"type": "error", "content": _NOT_AUTH_REASON})
+                await websocket.close(code=4001)
+                break
+
             message = payload.get("message", "").strip()
             if not message:
                 await websocket.send_json({"type": "error", "content": "Empty message"})
@@ -201,11 +306,8 @@ async def ws_chat(websocket: WebSocket):
             asst = get_assistant()
             asst.conversation.append({"role": "user", "content": message})
 
-            # Stream tokens via simple_chat for responsive UI
             collected = []
             token_queue = asyncio.Queue()
-
-            # Capture loop before entering thread context
             loop = asyncio.get_running_loop()
 
             def on_token(token):
@@ -215,14 +317,17 @@ async def ws_chat(websocket: WebSocket):
                 except Exception:
                     pass
 
-            # Producer: run AI in thread, put final response into queue
             def _run_chat():
-                asst.brain.chat_with_tools(asst.conversation, on_speak=on_token)
-                loop.call_soon_threadsafe(token_queue.put_nowait, None)
+                try:
+                    asst.brain.chat_with_tools(asst.conversation, on_speak=on_token)
+                except Exception as exc:
+                    collected.clear()
+                    collected.append(f"Error: {exc}")
+                finally:
+                    loop.call_soon_threadsafe(token_queue.put_nowait, None)
 
             await loop.run_in_executor(None, _run_chat)
 
-            # Consumer: read tokens from queue and send to WebSocket
             while True:
                 token = await token_queue.get()
                 if token is None:
@@ -237,14 +342,12 @@ async def ws_chat(websocket: WebSocket):
 
     except WebSocketDisconnect:
         pass
-    except Exception as e:
+    except Exception:
         try:
-            await websocket.send_json({"type": "error", "content": str(e)})
+            await websocket.send_json({"type": "error", "content": "WebSocket error occurred"})
         except Exception:
             pass
 
-
-# ── Serve static files ──────────────────────────────────────────────────────
 
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():

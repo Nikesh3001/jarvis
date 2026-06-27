@@ -3,7 +3,8 @@
 
 __all__ = ["SystemTools", "WebTools", "FileTools", "CodeInterpreter",
            "FileEditor", "ShellCommander", "GitOps", "Automator", "Planner",
-           "NewsTool", "StockTool", "WebScraper", "SecurityTool", "LanguageTools"]
+           "NewsTool", "StockTool", "WebScraper", "SecurityTool", "LanguageTools",
+           "InternetTools"]
 
 
 def __getattr__(name):
@@ -49,4 +50,7 @@ def __getattr__(name):
     if name == "LanguageTools":
         from tools.languages import LanguageTools
         return LanguageTools
+    if name == "InternetTools":
+        from tools.internet import InternetTools
+        return InternetTools
     raise AttributeError(f"module 'tools' has no attribute {name!r}")

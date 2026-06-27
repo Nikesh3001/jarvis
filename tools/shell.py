@@ -5,119 +5,119 @@ import subprocess
 import tempfile
 import re
 import ast
+import shutil
+import threading
 from core.platform_utils import is_windows, is_linux, is_macos
 from core.ratelimit import check_rate
 
 
-_DANGEROUS_COMMANDS = re.compile(
-    r"""
-    (?:
-        \b(?:format|diskpart|fdisk|parted|mkfs\.)\b.*?(?::|$)
-        |
-        \b(?:rd|rmdir)\s+.*?/s
-        |
-        \brm\s+.*?(?:-rf\s+/|--recursive\s+.*?--force\s+/|--no-preserve-root|-rf\s+~[/\\]|-rf\s+\$HOME[/\\])
-        |
-        \bdel\s+.*?(?:/f\s+/s|/f/s|/s\s+/f)
-        |
-        \b(?:shutdown|reboot|poweroff|halt|shut\s+down)\b
-        |
-        \bdd\s+.*?\b(?:if=|of=)
-        |
-        (?:^|\s)(?:>|>>?)\s*/dev/(?:sda|hda|nvme|mmcblk|sdb|sdc|sd[defgh])
-        |
-        \breg\s+(?:delete|add|import|copy|save|load|restore|compare|export)\b
-        |
-        \b(?:net\s+(?:user|localgroup|group|accounts|share|session))\b
-        |
-        \b(?:sc\s+delete|schtasks)\b
-        |
-        \b(?:wevtutil\s+(?:cl|clear-log|delete-log|export-log|import-log))\b
-        |
-        \b(?:cipher\s+/w:?|bcdedit)\b
-        |
-        \bfsutil\b
-        |
-        \bvssadmin\s+delete\b
-        |
-        \b(?:wmic\s+process\s+call\s+create|wmic\s+delete)\b
-        |
-        \b(?:chkdsk|defrag|sfc\s+/scannow|dism\s+/online\s+/cleanup-image)\b.*?(?:/f|fix)
-        |
-        \bformat\.com
-        |
-        \b(?:Invoke-Expression|iex|Invoke-Command|Invoke-WebRequest|Invoke-Item|Add-Type)\b
-        |
-        \b(?:[-])?EncodedCommand\b
-        |
-        \b(?:[-])?enc(?:odedcommand)?\b
-        |
-        \b[-]+ec\b
-        |
-        \bNew-Object\s+(?:System\.Net\.WebClient|Net\.WebClient|System\.Diagnostics\.Process|System\.Management\.Automation\.PSCredential)\b
-        |
-        \b(?:rm\s+(?:-rf\s+)?~[/\\]|rm\s+(?:-rf\s+)?\$HOME[/\\]|rm\s+(?:-rf\s+)?\$env:USERPROFILE[/\\])
-        |
-        \b(?:curl|wget|iwr|wget|Invoke-WebRequest)\s+.*?(?:-o|-outfile|>)
-        |
-        \b(?:certutil|bitsadmin|wmic)\s+.*?\b(?:url|cache|download|split|-f)\b
-        |
-        \becho\s+.*?\|.*?\b(?:powershell|cmd|sh|bash|wmic|mshta)\b
-        |
-        \b(?:mshta|rundll32|regsvr32|cscript|wscript|msiexec)\s+/[a-z]
-        |
-        \bStart-Process\s+.*?-FilePath\s+
-        |
-        \[System\.Reflection\.Assembly\]::Load
-        |
-        \b(?:python|python3|node|perl|ruby)\s+-[ce]\s+
-        |
-        \bbase64\s+(?:-d|--decode)\s*
-        |
-        \b(?:FromBase64String|Convert)\b.*?\b(?:FromBase64|ToBase64)\b
-        |
-        # Backtick command execution (dangerous patterns only)
-        (?:\|\||&&)\s*`[^`]+`
-        |
-        # Double-pipe and double-ampersand chains with dangerous commands
-        (?:\|\||&&)\s*(?:rm|del|format|shutdown|reboot|rd|rmdir|taskkill|kill)
-        |
-        # PowerShell download cradles
-        (?:New-Object\s+Net\.WebClient|Invoke-WebRequest|Start-BitsTransfer)\s+.*?\b(?:Download|download)
-        |
-        # WMI lateral movement
-        \bwmic\s+(?:node|computername)\s+
-        |
-        # Scheduled task persistence
-        \bschtasks\s+(?:/create|/delete|/change)
-        |
-        # Service manipulation
-        \bsc\s+(?:create|delete|config|start|stop)\s+
-        |
-        # Registry persistence
-        \breg\s+add\s+.*?\\(?:Run|RunOnce)\b
-        |
-        # Base64 encoded command patterns
-        (?:cmd|powershell|bash)\s+.*?-e\s+[A-Za-z0-9+/=]{20,}
-    )
-    """,
-    re.IGNORECASE | re.VERBOSE
+ALLOWED_COMMANDS = {
+    "echo", "dir", "ls", "pwd", "cd", "type", "cat", "more", "less",
+    "head", "tail", "find", "grep", "findstr", "where", "which",
+    "whoami", "hostname", "ver", "systeminfo", "uname",
+    "netstat", "ipconfig", "ifconfig", "ping", "tracert", "traceroute",
+    "nslookup", "curl", "wget",
+    "date", "time", "tasklist", "ps", "top",
+    "cls", "clear", "help", "calc", "notepad",
+    "copy", "xcopy", "robocopy", "move", "del", "erase", "mkdir", "rmdir",
+    "sort", "more", "tree",
+}
+
+
+BLOCKED_PATTERNS = re.compile(
+    r"(?:"
+    r"rm\s+(?:-rf\s+)?[/~]|del\s+/[fs]|format\s|shutdown\s|reboot|poweroff|halt|"
+    r"dd\s+.*(?:if=|of=)|mkfs\.|diskpart|fdisk|parted|"
+    r"reg\s+(?:delete|add\s+.*\\Run)|schtasks\s+/create|sc\s+create|"
+    r"Invoke-Expression|iex\s+|Invoke-Command|Invoke-WebRequest|"
+    r"EncodedCommand|New-Object\s+(?:System|Com)|Start-Process|"
+    r"certutil\s+.*-urlcache|bitsadmin\s+.*/download|"
+    r"mshta|rundll32|regsvr32|cscript|wscript|msiexec\s+/|"
+    r"wmic\s+|Add-Type|Add-MpPreference|Set-MpPreference|"
+    r"Stop-Process|Restart-Computer|Stop-Computer|"
+    r"Clear-EventLog|Remove-EventLog|"
+    r"Get-ChildItem\s+.*\\\.git|Get-Content\s+.*\\\.git|"
+    r"Remove-Item|rm\s+-recurse|rmdir\s+/[qs]|"
+    r">\s*\\\\.\w+",
+    r")",
+    re.IGNORECASE
 )
 
-def _check_dangerous(command):
-    if _DANGEROUS_COMMANDS.search(command):
+
+def _check_command_safety(command):
+    if BLOCKED_PATTERNS.search(command):
         raise PermissionError("Command blocked: contains dangerous operations")
+    parts = shlex.split(command)
+    if not parts:
+        raise PermissionError("Empty command")
+    cmd_base = os.path.basename(parts[0].lower())
+    parts_lower = [p.lower() for p in parts]
+    for p in parts_lower:
+        if p in ("sudo", "runas", "doas"):
+            raise PermissionError("Privilege escalation commands are blocked")
+    return parts
+
+
+def _check_dangerous_code(code, language="python"):
+    if language in ("batch", "powershell"):
+        dangerous_patterns = re.compile(
+            r"(?:Invoke-Expression|iex\b|Invoke-Command|Invoke-WebRequest|Add-Type|"
+            r"Add-MpPreference|Set-MpPreference|Restart-Computer|Stop-Computer|"
+            r"Stop-Process\s+-Name\s+(?:defender|security|firewall)|"
+            r"EncodedCommand|New-Object\s+(?:System\.Net\.WebClient|System\.IO\.|System\.Diagnostics\.Process|System\.Management\.Automation\.PSObject)|"
+            r"Start-Process\s+.*-FilePath\s+|"
+            r"certutil\s+.*-urlcache|bitsadmin\s+.*/download|"
+            r"wmic\s+process\s+delete|wmic\s+product\s+delete|"
+            r"Register-ScheduledTask|Set-ScheduledTask|"
+            r"Clear-EventLog|Remove-EventLog|"
+            r"Get-WmiObject\s+win32_process\s+\|",
+            re.IGNORECASE | re.VERBOSE
+        )
+        if dangerous_patterns.search(code):
+            raise PermissionError(f"Script blocked: contains dangerous {language} operations")
+    elif language in ("bash", "zsh"):
+        dangerous_patterns = re.compile(
+            r"(?:curl|wget)\s+.*?\|(?:bash|sh|zsh)\b|\beval\b|\bexec\b|"
+            r"/tmp/.*(?:chmod|bash|sh)|"
+            r"sudo\s|pkexec\s|chown\s|chmod\s+4\d{2}|"
+            r"mount\s|umount\s|dd\s+|mkfs\.|fdisk\s|"
+            r"/dev/\w+|/proc/\w+|>/dev/\w+|"
+            r"wget\s+.*-O\s+/|curl\s+.*-o\s+/|"
+            r"systemctl\s+(?:stop|disable|mask)\s+|"
+            r"passwd\s|useradd\s|userdel\s|groupadd\s|groupdel\s",
+            re.IGNORECASE | re.VERBOSE
+        )
+        if dangerous_patterns.search(code):
+            raise PermissionError(f"Script blocked: contains dangerous {language} operations")
+    elif language == "javascript":
+        dangerous_patterns = re.compile(
+            r"(?:require\s*\(\s*['\"](?:child_process|fs|os|net|cluster|worker_threads|vm)|"
+            r"exec\s*\(|spawn\s*\(|fork\s*\(|"
+            r"process\.(?:exit|kill|binding)|"
+            r"global\.process|__dirname\s*\+\s*['\"/]|"
+            r"eval\s*\(|Function\s*\(|"
+            r"fetch\s*\(\s*['\"]file:)",
+            re.IGNORECASE | re.VERBOSE
+        )
+        if dangerous_patterns.search(code):
+            raise PermissionError(f"Script blocked: contains dangerous {language} operations")
+    elif language == "python":
+        sandbox_err = _check_python_sandbox(code)
+        if sandbox_err:
+            raise PermissionError(sandbox_err)
+
+    if BLOCKED_PATTERNS.search(code):
+        raise PermissionError("Script blocked: contains dangerous operations")
 
 
 def _check_python_sandbox(code):
-    """Module-level Python sandbox check."""
     FORBIDDEN_MODULES = {"os", "subprocess", "shutil", "socket", "ctypes", "signal",
-                        "multiprocessing", "threading", "importlib", "pkgutil", "pdb",
-                        "inspect", "code", "codeop", "compileall", "py_compile",
-                        "webbrowser", "antigravity", "turtle"}
+                         "multiprocessing", "threading", "importlib", "pkgutil", "pdb",
+                         "inspect", "code", "codeop", "compileall", "py_compile",
+                         "webbrowser", "antigravity", "turtle"}
     FORBIDDEN_STRINGS = ["__import__", "__builtins__", "__subclasses__",
-                        "open(", "exec(", "eval(", "compile(",
-                        "os.", "subprocess.", "shutil.", "socket.", "ctypes."]
+                         "open(", "exec(", "eval(", "compile(",
+                         "os.", "subprocess.", "shutil.", "socket.", "ctypes."]
     try:
         tree = ast.parse(code)
     except SyntaxError:
@@ -129,62 +129,14 @@ def _check_python_sandbox(code):
                 if module in FORBIDDEN_MODULES:
                     return f"Module '{alias.name}' not allowed in sandboxed Python scripts"
         elif isinstance(node, ast.ImportFrom):
-            pass
+            if node.module:
+                module = node.module.split(".")[0]
+                if module in FORBIDDEN_MODULES:
+                    return f"Module '{node.module}' not allowed in sandboxed Python scripts"
     for forbidden in FORBIDDEN_STRINGS:
         if forbidden in code:
             return f"Code contains forbidden pattern: '{forbidden}'"
     return None
-
-
-def _check_dangerous_code(code, language="python"):
-    """Check script code for dangerous operations before execution."""
-    _check_dangerous(code)
-    if language in ("batch", "powershell"):
-        dangerous_patterns = re.compile(
-            r"""(?:
-                \b(?:Invoke-Expression|iex|Invoke-Command|Invoke-WebRequest|Invoke-Item|Add-Type)\b
-                |\b(?:[-])?EncodedCommand\b
-                |\b(?:[-])?enc(?:odedcommand)?\b
-                |\b[-]+ec\b
-                |\bNew-Object\s+(?:System\.Net\.WebClient|Net\.WebClient|System\.Diagnostics\.Process)\b
-                |\b(?:curl|wget|iwr)\s+.*?(?:-o|-outfile|>)\b
-                |\b(?:certutil|bitsadmin)\s+.*?\b(?:url|cache|download|split|-f)\b
-                |\bStart-Process\s+.*?-FilePath\s+\b
-            )""",
-            re.IGNORECASE | re.VERBOSE
-        )
-        if dangerous_patterns.search(code):
-            raise PermissionError(f"Script blocked: contains dangerous {language} operations")
-    elif language in ("bash", "zsh"):
-        dangerous_patterns = re.compile(
-            r"""(?:
-                \b(?:curl|wget)\s+.*?\|(?:bash|sh)\b
-                |\beval\b
-                |\bexec\b
-                |\bbase64\s+--decode\s*\|
-                |\b/tmp/\b.*\b(?:chmod|bash|sh)\b
-            )""",
-            re.IGNORECASE | re.VERBOSE
-        )
-        if dangerous_patterns.search(code):
-            raise PermissionError(f"Script blocked: contains dangerous {language} operations")
-    elif language == "javascript":
-        dangerous_patterns = re.compile(
-            r"""(?:
-                \brequire\s*\(\s*['"](?:child_process|fs|os|net|http|https|dgram|cluster)\b
-                |\bexec\s*\(
-                |\bspawn\s*\(
-                |\bfs\s*\.\s*(?:writeFile|readFile|unlink|rmdir|chmod)\b
-                |\bprocess\s*\.\s*(?:exit|env|argv)\b
-            )""",
-            re.IGNORECASE | re.VERBOSE
-        )
-        if dangerous_patterns.search(code):
-            raise PermissionError(f"Script blocked: contains dangerous {language} operations")
-    elif language == "python":
-        sandbox_err = _check_python_sandbox(code)
-        if sandbox_err:
-            raise PermissionError(sandbox_err)
 
 
 class ShellCommander:
@@ -192,18 +144,17 @@ class ShellCommander:
         if not check_rate("shell_run_command", rate=5, burst=10):
             return "Rate limit exceeded. Please wait before running more commands."
         try:
-            _check_dangerous(command)
+            _check_command_safety(command)
             if is_windows():
                 r = subprocess.run(
-                    command,
+                    ["cmd", "/c", command],
                     capture_output=True,
                     text=True,
                     timeout=timeout,
                 )
             else:
-                cmd_parts = shlex.split(command)
                 r = subprocess.run(
-                    cmd_parts,
+                    ["sh", "-c", command],
                     capture_output=True,
                     text=True,
                     timeout=timeout,
@@ -219,12 +170,12 @@ class ShellCommander:
             return str(e)
         except subprocess.TimeoutExpired:
             return f"Command timed out after {timeout}s"
-        except Exception:
-            return "Command execution failed"
+        except Exception as e:
+            return f"Command execution failed: {type(e).__name__}"
 
     def _run_powershell(self, command, timeout=60):
         try:
-            _check_dangerous(command)
+            _check_command_safety(command)
             r = subprocess.run(
                 ["powershell", "-NoProfile", "-Command", command],
                 capture_output=True, text=True, timeout=timeout,
@@ -240,12 +191,12 @@ class ShellCommander:
             return str(e)
         except subprocess.TimeoutExpired:
             return f"Command timed out after {timeout}s"
-        except Exception:
-            return "PowerShell execution failed"
+        except Exception as e:
+            return f"PowerShell execution failed: {type(e).__name__}"
 
     def _run_bash(self, command, timeout=60):
         try:
-            _check_dangerous(command)
+            _check_command_safety(command)
             r = subprocess.run(
                 ["bash", "-c", command],
                 capture_output=True, text=True, timeout=timeout,
@@ -261,8 +212,8 @@ class ShellCommander:
             return str(e)
         except subprocess.TimeoutExpired:
             return f"Command timed out after {timeout}s"
-        except Exception:
-            return "Shell execution failed"
+        except Exception as e:
+            return f"Shell execution failed: {type(e).__name__}"
 
     def run_powershell(self, command, timeout=60):
         if not is_windows():
@@ -273,8 +224,6 @@ class ShellCommander:
         if is_windows():
             return self._run_powershell(command, timeout)
         return self._run_bash(command, timeout)
-
-
 
     def run_script(self, code, language="python", timeout=30):
         suffix = {"python": ".py", "powershell": ".ps1", "batch": ".bat", "bash": ".sh", "zsh": ".sh", "javascript": ".js"}
@@ -303,12 +252,10 @@ class ShellCommander:
             if r.stderr.strip():
                 out.append(f"Error:\n{r.stderr.strip()[:2000]}")
             return "\n".join(out) if out else "Script completed (no output)"
-        except PermissionError as e:
-            return str(e)
         except subprocess.TimeoutExpired:
             return f"Script timed out after {timeout}s"
-        except Exception:
-            return "Script execution failed"
+        except Exception as e:
+            return f"Script execution failed: {type(e).__name__}"
         finally:
             try:
                 os.unlink(tmp)

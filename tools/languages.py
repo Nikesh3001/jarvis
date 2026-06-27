@@ -297,6 +297,20 @@ class LanguageTools:
             return f"Project types detected:\n" + "\n".join(f"  - {f}" for f in found)
         return "No known project type detected in this directory."
 
+    @staticmethod
+    def _validate_path(path_str):
+        """Reject paths containing shell metacharacters."""
+        bad = set(';&|`$(){}[]!#~<>\'"\n\r\x00')
+        if any(c in path_str for c in bad):
+            raise ValueError(f"Path contains invalid characters: {path_str}")
+
+    @staticmethod
+    def _validate_package_name(name):
+        """Reject package names containing shell metacharacters."""
+        import re as _re
+        if not _re.match(r'^[a-zA-Z0-9._\-]+$', name):
+            raise ValueError(f"Package name contains invalid characters: {name}")
+
     def lint(self, file_path, language=None):
         """Lint a file using the appropriate linter."""
         if not check_rate("language_lint", rate=2, burst=5):
@@ -312,12 +326,24 @@ class LanguageTools:
         linter = LINTERS.get(language)
         if not linter:
             return f"No linter configured for {language}. Available: {', '.join(sorted(LINTERS.keys()))}"
+        try:
+            self._validate_path(str(path))
+        except ValueError as e:
+            return f"Blocked: {e}"
         cmd = linter["cmd"].replace("{file}", str(path))
         try:
-            r = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=30,
-                cwd=str(path.parent)
-            )
+            if is_windows():
+                r = subprocess.run(
+                    cmd, shell=True, capture_output=True, text=True, timeout=30,
+                    cwd=str(path.parent)
+                )
+            else:
+                import shlex as _shlex
+                cmd_parts = _shlex.split(cmd)
+                r = subprocess.run(
+                    cmd_parts, shell=False, capture_output=True, text=True, timeout=30,
+                    cwd=str(path.parent)
+                )
             out = []
             if r.stdout.strip():
                 out.append(f"Output:\n{r.stdout.strip()[:3000]}")
@@ -349,12 +375,24 @@ class LanguageTools:
         formatter = FORMATTERS.get(language)
         if not formatter or not formatter["cmd"]:
             return f"No formatter configured for {language}"
+        try:
+            self._validate_path(str(path))
+        except ValueError as e:
+            return f"Blocked: {e}"
         cmd = formatter["cmd"].replace("{file}", str(path))
         try:
-            r = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=30,
-                cwd=str(path.parent)
-            )
+            if is_windows():
+                r = subprocess.run(
+                    cmd, shell=True, capture_output=True, text=True, timeout=30,
+                    cwd=str(path.parent)
+                )
+            else:
+                import shlex as _shlex
+                cmd_parts = _shlex.split(cmd)
+                r = subprocess.run(
+                    cmd_parts, shell=False, capture_output=True, text=True, timeout=30,
+                    cwd=str(path.parent)
+                )
             out = []
             if r.stdout.strip():
                 out.append(r.stdout.strip()[:2000])
@@ -376,6 +414,8 @@ class LanguageTools:
         if not template:
             available = ", ".join(sorted(SCAFFOLD_TEMPLATES.keys()))
             return f"Language '{language}' not supported. Available: {available}"
+        if not name or "/" in name or "\\" in name or ".." in name:
+            return f"Invalid project name: {name}"
         if path is None:
             path = Path.cwd() / name
         else:
@@ -384,7 +424,6 @@ class LanguageTools:
             return f"Directory already exists: {path}"
         created = []
         for file_path, content in template["files"].items():
-            # Replace {name} and {description} in paths and content
             file_path = file_path.replace("{name}", name)
             full_path = path / file_path
             full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -400,12 +439,23 @@ class LanguageTools:
         pm = PACKAGE_MANAGERS.get(language)
         if not pm or not pm["install"]:
             return f"No package manager configured for {language}"
+        try:
+            self._validate_package_name(package)
+        except ValueError as e:
+            return f"Blocked: {e}"
         cmd = pm["install"].replace("{pkg}", package)
         cwd = str(path) if path else None
         try:
-            r = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=120, cwd=cwd
-            )
+            if is_windows():
+                r = subprocess.run(
+                    cmd, shell=True, capture_output=True, text=True, timeout=120, cwd=cwd
+                )
+            else:
+                import shlex as _shlex
+                cmd_parts = _shlex.split(cmd)
+                r = subprocess.run(
+                    cmd_parts, shell=False, capture_output=True, text=True, timeout=120, cwd=cwd
+                )
             out = []
             if r.stdout.strip():
                 out.append(r.stdout.strip()[:3000])

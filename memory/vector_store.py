@@ -48,6 +48,7 @@ class VectorStore:
             kwargs = {
                 "query_texts": [query],
                 "n_results": n_results,
+                "include": ["documents", "metadatas", "distances"],
             }
             if filter_metadata:
                 kwargs["where"] = filter_metadata

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>fsociety Cyber Console</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="terminal-container">
+        <div class="terminal-header">
+            <div class="terminal-title">
+                <span class="icon">⚡</span>
+                <span>fsociety Cyber Console v3.5.0</span>
+            </div>
+            <div class="terminal-controls">
+                <button id="clear-btn" class="btn-icon" title="Clear terminal">✕</button>
+                <button id="help-btn" class="btn-icon" title="Show help">?</button>
+            </div>
+        </div>
+        
+        <div class="terminal-body">
+            <div id="output" class="terminal-output"></div>
+            <div class="input-line">
+                <span class="prompt">cyber&gt;</span>
+                <input type="text" id="command-input" autocomplete="off" spellcheck="false" placeholder="Type 'help' for commands...">
+            </div>
+        </div>
+        
+        <div class="terminal-footer">
+            <span class="status">● Ready</span>
+            <span class="hint">
+                API Key: <input type="password" id="api-key-input" placeholder="(optional)" class="api-key-field">
+                | "Control is an illusion" | Ctrl+C | ↑↓ history
+            </span>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Cyber Console Commands</h2>
+                <button id="close-help" class="btn-close">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="help-section">
+                    <h3>🔍 RECON</h3>
+                    <div class="cmd"><code>nmap &lt;target&gt; [ports] [type]</code> - Port scan</div>
+                    <div class="cmd"><code>shodan &lt;query&gt;</code> - Search Shodan</div>
+                    <div class="cmd"><code>shodan-host &lt;ip&gt;</code> - Shodan host info</div>
+                    <div class="cmd"><code>dns &lt;domain&gt;</code> - DNS lookup</div>
+                    <div class="cmd"><code>subdomain &lt;domain&gt;</code> - Subdomain enum</div>
+                    <div class="cmd"><code>whois &lt;domain&gt;</code> - WHOIS lookup</div>
+                    <div class="cmd"><code>banner &lt;host&gt; &lt;port&gt;</code> - Banner grab</div>
+                    <div class="cmd"><code>traceroute &lt;target&gt;</code> - Network traceroute</div>
+                </div>
+                <div class="help-section">
+                    <h3>💥 EXPLOIT</h3>
+                    <div class="cmd"><code>nikto &lt;target&gt; [port] [--ssl]</code> - Web vuln scan</div>
+                    <div class="cmd"><code>sqlmap &lt;url&gt; [data]</code> - SQL injection test</div>
+                    <div class="cmd"><code>hydra &lt;target&gt; &lt;svc&gt; &lt;usr&gt; [pwd]</code> - Brute-force</div>
+                    <div class="cmd"><code>gobuster &lt;url&gt; [wordlist]</code> - Dir brute-force</div>
+                    <div class="cmd"><code>ffuf &lt;url&gt; [wordlist]</code> - Web fuzzing</div>
+                </div>
+                <div class="help-section">
+                    <h3>🌐 WEB</h3>
+                    <div class="cmd"><code>headers &lt;url&gt;</code> - Security headers</div>
+                    <div class="cmd"><code>ssl &lt;host&gt; [port]</code> - SSL/TLS check</div>
+                    <div class="cmd"><code>jina &lt;url&gt;</code> - Read page (Jina AI)</div>
+                    <div class="cmd"><code>semantic &lt;query&gt;</code> - AI search</div>
+                </div>
+                <div class="help-section">
+                    <h3>🖥️ SYSTEM</h3>
+                    <div class="cmd"><code>firewall</code> - Check firewall</div>
+                    <div class="cmd"><code>ports [target]</code> - Open ports</div>
+                    <div class="cmd"><code>services</code> - Running services</div>
+                    <div class="cmd"><code>listeners</code> - Listening ports</div>
+                    <div class="cmd"><code>updates</code> - Security updates</div>
+                    <div class="cmd"><code>best-practices</code> - Security audit</div>
+                </div>
+                <div class="help-section">
+                    <h3>🔧 NETWORK</h3>
+                    <div class="cmd"><code>ssh &lt;host&gt; &lt;cmd&gt; [user] [pass]</code> - SSH command</div>
+                    <div class="cmd"><code>hash &lt;file&gt;</code> - File hash</div>
+                    <div class="cmd"><code>hash-id &lt;hash&gt;</code> - Identify hash type</div>
+                </div>
+                <div class="help-section">
+                    <h3>💣 METASPLOIT</h3>
+                    <div class="cmd"><code>msf &lt;command&gt;</code> - Run msfconsole command</div>
+                    <div class="cmd"><code>msfvenom &lt;payload&gt; &lt;lhost&gt; &lt;lport&gt;</code> - Generate payload</div>
+                    <div class="cmd"><code>msf-script &lt;path&gt;</code> - Run .rc resource file</div>
+                    <div class="cmd"><code>msf-db</code> - Check DB status</div>
+                </div>
+                <div class="help-section">
+                    <h3>🔧 BUILT-IN DEV TOOLS</h3>
+                    <div class="cmd"><code>git &lt;args&gt;</code> - Run git commands</div>
+                    <div class="cmd"><code>python &lt;code&gt;</code> - Run Python code</div>
+                    <div class="cmd"><code>pip &lt;args&gt;</code> - Run pip commands</div>
+                </div>
+                <div class="help-section">
+                    <h3>📋 META</h3>
+                    <div class="cmd"><code>report [targets...]</code> - Generate HTML/PDF report</div>
+                    <div class="cmd"><code>tools</code> - List all tools</div>
+                    <div class="cmd"><code>check</code> - Check tool installs</div>
+                    <div class="cmd"><code>help</code> - Show this help</div>
+                    <div class="cmd"><code>quit / exit</code> - Exit console</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

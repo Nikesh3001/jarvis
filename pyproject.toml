@@ -3,6 +3,9 @@ name = "jarvis"
 version = "3.5.0"
 description = "FRIDAY AI Assistant - Elite coding AI"
 requires-python = ">=3.10"
+dependencies = [
+    "pyrefly>=0.60.0",
+]
 
 [tool.black]
 line-length = 100

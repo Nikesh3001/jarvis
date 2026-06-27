@@ -5,6 +5,7 @@ import tempfile
 import ast
 import io
 import contextlib
+import threading
 
 
 FORBIDDEN_MODULES = {
@@ -12,9 +13,9 @@ FORBIDDEN_MODULES = {
     "multiprocessing", "threading", "importlib", "pkgutil", "pdb",
     "inspect", "code", "codeop", "compileall", "py_compile",
     "webbrowser", "antigravity", "turtle",
-    "pathlib", "glob", "fnmatch",  # File system access
-    "urllib", "urllib2", "httplib",  # Network access
-    "_io", "codecs",  # Low-level I/O
+    "pathlib", "glob", "fnmatch",
+    "urllib", "urllib2", "httplib",
+    "_io", "codecs",
 }
 
 FORBIDDEN_STRINGS = [
@@ -24,17 +25,16 @@ FORBIDDEN_STRINGS = [
     "open(", "exec(", "eval(", "compile(",
     "getattr(", "setattr(", "delattr(",
     "os.", "subprocess.", "shutil.", "socket.", "ctypes.",
-    "pathlib.", "glob.",  # File system access
-    "__import__",  # Dynamic imports
-    "globals(", "locals(",  # Scope inspection
-    "vars(",  # Variable inspection
+    "pathlib.", "glob.",
+    "globals(", "locals(",
+    "vars(",
 ]
 
 DANGEROUS_NAMES = {
     "exec", "eval", "compile", "__import__", "open",
     "input", "breakpoint", "help",
-    "getattr", "setattr", "delattr",  # Attribute manipulation
-    "globals", "locals", "vars",  # Scope inspection
+    "getattr", "setattr", "delattr",
+    "globals", "locals", "vars",
 }
 
 
@@ -64,6 +64,14 @@ def _check_code_safety(code):
             if isinstance(node.func, ast.Attribute):
                 if isinstance(node.func.value, ast.Name) and node.func.value.id == "builtins":
                     raise SandboxError("Access to 'builtins' module is not allowed")
+                if isinstance(node.func.value, ast.Attribute):
+                    chain = []
+                    cur = node.func
+                    while isinstance(cur, ast.Attribute):
+                        chain.append(cur.attr)
+                        cur = cur.value
+                    if isinstance(cur, ast.Name) and cur.id == "type":
+                        raise SandboxError("Meta-programming patterns are blocked")
         elif isinstance(node, ast.Attribute):
             if isinstance(node.value, ast.Name) and node.value.id in ("os", "subprocess", "shutil", "socket", "ctypes"):
                 raise SandboxError(f"Access to '{node.value.id}.{node.attr}' is not allowed")
@@ -71,10 +79,9 @@ def _check_code_safety(code):
     return tree
 
 
-
 class CodeInterpreter:
     def __init__(self):
-        self.timeout = 30
+        self.timeout = 10
 
     def run_code(self, code):
         if not code or not code.strip():
@@ -101,11 +108,16 @@ class CodeInterpreter:
         }
 
         def safe_import(name, *args, **kwargs):
+            return _import_fallback(name, *args, **kwargs)
+
+        def _import_fallback(name, *args, **kwargs):
             base = name.split(".")[0]
             if base in FORBIDDEN_MODULES:
                 raise SandboxError(f"Module '{name}' is not allowed in sandbox")
             if base not in safe_modules:
                 raise SandboxError(f"Module '{name}' is not in the allowed safe list")
+            if base == "builtins":
+                raise SandboxError(f"Module '{name}' is not allowed in sandbox")
             return __import__(name, *args, **kwargs)
 
         safe_builtins = {
@@ -127,7 +139,6 @@ class CodeInterpreter:
             "tuple": tuple, "type": type,
             "zip": zip,
             "True": True, "False": False, "None": None,
-            "__import__": safe_import,
         }
 
         restricted_globals = {
@@ -136,26 +147,38 @@ class CodeInterpreter:
 
         stdout_capture = io.StringIO()
         stderr_capture = io.StringIO()
+        result = []
+        exception_info = [None]
 
-        try:
-            compiled = compile(tree, "<sandbox>", "exec")
-            with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
-                exec(compiled, restricted_globals, {})
+        def run_in_thread():
+            try:
+                compiled = compile(tree, "<sandbox>", "exec")
+                with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
+                    exec(compiled, restricted_globals, {})
+            except SandboxError as e:
+                exception_info[0] = f"Sandbox blocked at runtime: {e}"
+            except Exception as e:
+                exception_info[0] = f"Code error: {type(e).__name__}: {e}"
 
-            out = []
-            stdout_text = stdout_capture.getvalue().strip()
-            stderr_text = stderr_capture.getvalue().strip()
-            if stdout_text:
-                out.append(f"Output:\n{stdout_text[:5000]}")
-            if stderr_text:
-                out.append(f"Stderr:\n{stderr_text[:2000]}")
-            if not out:
-                out.append("Code executed (no output).")
-            return "\n".join(out)
-        except SandboxError as e:
-            return f"Sandbox blocked at runtime: {e}"
-        except Exception as e:
-            return f"Code error: {type(e).__name__}: {e}"
+        t = threading.Thread(target=run_in_thread, daemon=True)
+        t.start()
+        t.join(timeout=self.timeout)
+
+        if t.is_alive():
+            return f"Code execution timed out after {self.timeout}s"
+
+        if exception_info[0]:
+            return exception_info[0]
+
+        stdout_text = stdout_capture.getvalue().strip()
+        stderr_text = stderr_capture.getvalue().strip()
+        if stdout_text:
+            result.append(f"Output:\n{stdout_text[:5000]}")
+        if stderr_text:
+            result.append(f"Stderr:\n{stderr_text[:2000]}")
+        if not result:
+            result.append("Code executed (no output).")
+        return "\n".join(result)
 
     def get_tool_definitions(self):
         return [

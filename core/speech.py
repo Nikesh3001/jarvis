@@ -126,14 +126,17 @@ class SpeechEngine:
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.pause_threshold = 0.8
         self.microphone = None
-        if mic_index is not None:
-            try:
-                self.microphone = sr.Microphone(device_index=mic_index)
-            except Exception:
+        try:
+            if mic_index is not None:
+                try:
+                    self.microphone = sr.Microphone(device_index=mic_index)
+                except Exception:
+                    self.microphone = sr.Microphone()
+            else:
                 self.microphone = sr.Microphone()
-        else:
-            self.microphone = sr.Microphone()
-        self._calibrate_noise()
+            self._calibrate_noise()
+        except (AttributeError, OSError) as e:
+            self._mic_error = str(e)
         self.tts_queue = queue.Queue()
         self.tts_thread = threading.Thread(target=self._tts_worker, daemon=True)
         self.tts_thread.start()
@@ -199,6 +202,9 @@ class SpeechEngine:
         self.tts_queue.join()
 
     def listen(self, timeout=5, phrase_limit=10):
+        if self.microphone is None:
+            print("\n  [Microphone unavailable - PyAudio not installed]")
+            return None
         print("\n  [LISTENING - speak now] ", end="", flush=True)
         try:
             audio = self.recognizer.listen(self.microphone, timeout=timeout, phrase_time_limit=phrase_limit)
@@ -220,6 +226,10 @@ class SpeechEngine:
             return None
 
     def listen_for_wake_word(self):
+        if self.microphone is None:
+            print("\n  [Microphone unavailable - PyAudio not installed]")
+            time.sleep(1)
+            return False
         wake_words = ["hey friday", "friday", "ok friday", "hello friday"]
         print()
         print("  ┌──────────────────────────────────────────────────────────┐")
@@ -244,7 +254,11 @@ class SpeechEngine:
                     count += 1
                     if count % 10 == 0:
                         print(f"\r  (listening...)   ", end="", flush=True)
-                    audio = self.recognizer.listen(source, timeout=0.5, phrase_time_limit=4)
+                    try:
+                        audio = self.recognizer.listen(source, timeout=0.5, phrase_time_limit=4)
+                    except sr.WaitTimeoutError:
+                        time.sleep(0.05)
+                        continue
                     if audio is None:
                         continue
                     print(f"\r  [audio captured]     ", end="", flush=True)

@@ -9,15 +9,14 @@ ALLOWED_ROOTS = [
 
 def _safe_resolve(path):
     path = os.path.expanduser(path)
-    before = os.path.abspath(path)
-    for _ in range(5):
+    path = os.path.abspath(path)
+    try:
         resolved = os.path.realpath(path)
-        for root in ALLOWED_ROOTS:
-            if resolved.startswith(root + os.sep) or resolved == root:
-                return resolved
-        if resolved == before:
-            break
-        before = resolved
+    except OSError:
+        resolved = path
+    for root in ALLOWED_ROOTS:
+        if resolved == root or os.path.commonpath([resolved, root]) == root:
+            return resolved
     raise PermissionError("Access denied: path is outside allowed directories")
 
 
@@ -88,7 +87,9 @@ class FileTools:
                 return self.read_spreadsheet(path)
             else:
                 return f"Unsupported file type: {ext}"
-        except Exception as e:
+        except PermissionError:
+            return "Access denied: permission error reading file"
+        except Exception:
             return "Error reading file"
 
     def _read_pdf(self, path):

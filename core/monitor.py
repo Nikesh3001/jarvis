@@ -130,7 +130,7 @@ class ProactiveMonitor:
         try:
             mem = self._psutil.virtual_memory()
             cpu = self._psutil.cpu_percent(interval=0)
-            uptime_secs = int(time.time() - self.psutil.boot_time())
+            uptime_secs = int(time.time() - self._psutil.boot_time())
             days, rem = divmod(uptime_secs, 86400)
             hours, rem = divmod(rem, 3600)
             mins = rem // 60

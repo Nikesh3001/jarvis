@@ -1,10 +1,13 @@
 import time
 import threading
 import json
+import hmac
+import hashlib
 from pathlib import Path
 
 
 _RATE_STATE_PATH = Path(__file__).parent.parent / ".rate_state"
+_HMAC_KEY = hashlib.sha256(b"FRIDAY_RATELIMIT_HMAC_2024").digest()
 
 
 class TokenBucket:
@@ -46,12 +49,23 @@ _buckets = {}
 _buckets_lock = threading.Lock()
 
 
+def _sign_state(state_json):
+    return hmac.new(_HMAC_KEY, state_json.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _verify_state(state_json, signature):
+    expected = _sign_state(state_json)
+    return hmac.compare_digest(expected, signature)
+
+
 def _save_state():
     try:
         state = {}
         for key, bucket in _buckets.items():
             state[key] = bucket.to_dict()
-        _RATE_STATE_PATH.write_text(json.dumps(state), encoding="utf-8")
+        state_json = json.dumps(state)
+        signature = _sign_state(state_json)
+        _RATE_STATE_PATH.write_text(json.dumps({"data": state, "sig": signature}), encoding="utf-8")
     except Exception:
         pass
 
@@ -59,7 +73,15 @@ def _save_state():
 def _load_state():
     try:
         if _RATE_STATE_PATH.exists():
-            data = json.loads(_RATE_STATE_PATH.read_text(encoding="utf-8"))
+            raw = json.loads(_RATE_STATE_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, dict) and "data" in raw and "sig" in raw:
+                state_json = json.dumps(raw["data"])
+                if not _verify_state(state_json, raw["sig"]):
+                    return
+                data = raw["data"]
+            else:
+                # Legacy format (no HMAC) — accept but will re-save with sig
+                data = raw
             for key, bucket_data in data.items():
                 _buckets[key] = TokenBucket.from_dict(bucket_data)
     except Exception:
@@ -69,13 +91,17 @@ def _load_state():
 # Load persisted rate limits on import
 _load_state()
 
+import atexit
+
+
+@atexit.register
+def _save_state_on_exit():
+    _save_state()
+
 
 def check_rate(key, rate=10, burst=20):
     with _buckets_lock:
         if key not in _buckets:
             _buckets[key] = TokenBucket(rate, burst)
         result = _buckets[key].acquire()
-        # Persist state periodically (every 10 checks)
-        if hash(key) % 10 == 0:
-            _save_state()
-        return result
+    return result

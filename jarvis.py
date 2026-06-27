@@ -21,6 +21,8 @@ def main():
             mode = "text"
         elif arg in ("-w", "--web"):
             mode = "web"
+        elif arg in ("-cyber", "--cyber", "--pentest"):
+            mode = "cyber"
         else:
             try:
                 mic_index = int(arg)
@@ -31,6 +33,7 @@ def main():
         print(f"    -c, --continuous   Voice mode (no wake word)")
         print(f"    -t, --text         Text mode (type commands)")
         print(f"    -w, --web          Web dashboard mode")
+        print(f"    -cyber, --pentest  Cybersecurity console mode")
         print(f"    -h, --help         This help")
         print(f"    mic_index          Microphone device index")
         sys.exit(0)
@@ -43,7 +46,10 @@ def main():
         print(f"  [FIX]   Run: python setup_keys.py")
         print()
         sys.exit(1)
-    if mode == "web":
+    if mode == "cyber":
+        from tools.cyber import run_cyber_console
+        run_cyber_console()
+    elif mode == "web":
         from web.server import main as web_main
         web_main()
     elif mode == "text":

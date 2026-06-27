@@ -38,12 +38,22 @@ class Automator:
             return "Launch failed: invalid characters in target"
         try:
             if "chrome" in target.lower():
-                chrome = self._find_chrome()
-                if chrome:
-                    cmd = [chrome]
-                    cmd.append("chrome://newtab")
-                    subprocess.Popen(cmd, shell=False)
-                    return f"Launched Chrome"
+                # Extract URL if present (e.g., "chrome https://example.com")
+                parts = target.split(None, 1)
+                url = parts[1] if len(parts) > 1 else None
+                if url:
+                    if not url.startswith(("http://", "https://")):
+                        url = "https://" + url
+                    if self._open_with_chrome(url):
+                        return f"Opened in Chrome: {url}"
+                    return f"Chrome not found: {url}"
+                else:
+                    chrome = self._find_chrome()
+                    if chrome:
+                        cmd = [chrome]
+                        cmd.append("chrome://newtab")
+                        subprocess.Popen(cmd, shell=False)
+                        return f"Launched Chrome"
             if os.path.exists(target):
                 resolved = os.path.realpath(target)
                 if not self._safe_path(resolved):

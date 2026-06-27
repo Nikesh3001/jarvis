@@ -25,12 +25,6 @@ class WebScraper:
             )
         return self._client
 
-    def _fetch(self, url, **kwargs):
-        url = validate_url(url)
-        client = self._get_client()
-        kwargs.pop("follow_redirects", None)
-        return safe_httpx_get(url, client, **kwargs)
-
     def scrape_url(self, url, max_chars=8000):
         try:
             url = validate_url(url)

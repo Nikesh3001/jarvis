@@ -65,10 +65,11 @@ def get_platform():
 
 def open_file(path):
     if is_windows():
-        safe = path.replace("\u0027", "\u0027\u0027")
+        env = os.environ.copy()
+        env['_FRIDAY_PATH'] = str(path)
         r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", "Start-Process \u0027" + safe + "\u0027"],
-            capture_output=True, text=True, timeout=15
+            ["powershell", "-NoProfile", "-Command", "Start-Process $env:_FRIDAY_PATH"],
+            capture_output=True, text=True, timeout=15, env=env
         )
         return r.returncode == 0
     elif is_macos():
@@ -79,10 +80,11 @@ def open_file(path):
 
 def launch_app(name):
     if is_windows():
-        safe = name.replace("\u0027", "\u0027\u0027")
+        env = os.environ.copy()
+        env['_FRIDAY_APP'] = str(name)
         r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", "Start-Process \u0027" + safe + "\u0027"],
-            capture_output=True, text=True, timeout=15
+            ["powershell", "-NoProfile", "-Command", "Start-Process $env:_FRIDAY_APP"],
+            capture_output=True, text=True, timeout=15, env=env
         )
         return r.returncode == 0
     elif is_macos():
@@ -136,5 +138,5 @@ def get_default_shell():
 
 
 def screenshot_path():
-    return os.path.join(tempfile.gettempdir(), f"friday_screenshot_{__import__('secrets').token_hex(4)}_{int(time.time())}.png")
+    return os.path.join(tempfile.gettempdir(), f"friday_screenshot_{__import__('secrets').token_hex(8)}_{__import__('secrets').token_hex(4)}.png")
 

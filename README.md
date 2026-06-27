@@ -5,13 +5,13 @@ A dual-personality voice AI assistant for your terminal. Powered by **Ollama** (
 ## Features
 
 - **Dual AI**: JARVIS (male voice) / FRIDAY (female voice) — switch anytime
-- **Local AI**: Uses Ollama models (phi4-mini, qwen3) — no internet needed for AI
+- **Local AI**: Uses Ollama models (phi4-mini, qwen3) — no internet needed for AI in local mode
 - **Voice Input**: Speak naturally, wake words "Hey Jarvis" / "Hey Friday"
 - **Voice Output**: Natural TTS via Microsoft Edge voices
 - **System Control**: Open apps, take screenshots, control volume, run commands
 - **System Monitoring**: CPU, RAM, disk, processes, network info
-- **Permission System**: Sensitive actions ask for approval
-- **Legal & Ethical**: No destructive actions without consent
+- **Permission System**: Safe mode (default ON) gates dangerous operations; requires user confirmation to disable
+- **Code Sandbox**: Python execution restricted to safe builtins and approved modules only
 
 ## Requirements
 

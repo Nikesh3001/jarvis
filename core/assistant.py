@@ -42,10 +42,7 @@ def _encrypt_data(data):
         f = Fernet(fernet_key)
         return f.encrypt(data.encode("utf-8")).decode("ascii")
     except ImportError:
-        import sys
-        print("  [SECURITY] WARNING: cryptography not installed. Using base64 encoding (not encrypted).", file=sys.stderr)
-        print("  [SECURITY] Install: pip install cryptography", file=sys.stderr)
-        return base64.b64encode(data.encode("utf-8")).decode("ascii")
+        raise RuntimeError("cryptography library is required. Install: pip install cryptography")
 
 
 def _decrypt_data(data):
@@ -56,15 +53,9 @@ def _decrypt_data(data):
         f = Fernet(fernet_key)
         return f.decrypt(data.encode("ascii")).decode("utf-8")
     except ImportError:
-        try:
-            return base64.b64decode(data.encode("ascii")).decode("utf-8")
-        except Exception:
-            return data
+        raise RuntimeError("cryptography library is required. Install: pip install cryptography")
     except InvalidToken:
-        try:
-            return base64.b64decode(data.encode("ascii")).decode("utf-8")
-        except Exception:
-            return data
+        raise ValueError("Failed to decrypt data: invalid token or key")
 
 VERSION = "3.5.0"
 MARK_NUMBER = 86
@@ -174,6 +165,7 @@ class Assistant:
         self._plugin_manager = None
         self._mcp_clients = []
         self._languages = None
+        self._internet = None
 
         self._register_core_tools()
         self._register_web_tools()
@@ -194,6 +186,7 @@ class Assistant:
         self._register_multi_agent()
         self._register_code_index()
         self._register_languages()
+        self._register_internet()
         self._register_plugins()
 
         self.governor = ResourceGovernor(self)
@@ -371,6 +364,7 @@ class Assistant:
         if self._security is None:
             from tools.security import SecurityTool
             self._security = SecurityTool()
+            self._security.safe_mode = self.safe_mode
             self.brain.register_tools(
                 self._security.get_tool_definitions(),
                 self._security.get_handler
@@ -457,6 +451,18 @@ class Assistant:
     def _register_languages(self):
         self._lazy_languages()
 
+    def _lazy_internet(self):
+        if self._internet is None:
+            from tools.internet import InternetTools
+            self._internet = InternetTools()
+            self.brain.register_tools(
+                self._internet.get_tool_definitions(),
+                self._internet.get_handler,
+            )
+
+    def _register_internet(self):
+        self._lazy_internet()
+
     def _lazy_plugins(self):
         if self._plugin_manager is None:
             from core.plugin_manager import PluginManager
@@ -523,6 +529,13 @@ class Assistant:
     def _deobfuscate(self, text):
         return _decrypt_data(text)
 
+    def _redact_sensitive(self, text):
+        text = re.sub(r'gsk_[a-zA-Z0-9_-]{20,}', '[REDACTED_API_KEY]', text)
+        text = re.sub(r'sk-[a-zA-Z0-9_-]{20,}', '[REDACTED_API_KEY]', text)
+        text = re.sub(r'[Aa]pi[_-]?[Kk]ey["\']?\s*[:=]\s*["\']?\S{8,}', '[REDACTED_API_KEY]', text)
+        text = re.sub(r'(?i)(password|passwd|secret|bearer)\s*[:=]\s*["\']?\S{8,}', r'\1=[REDACTED]', text)
+        return text
+
     def _save_conversation(self):
         if not self.conversation:
             return
@@ -530,11 +543,17 @@ class Assistant:
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             self.session_file = self.history_dir / f"session_{ts}.json"
         try:
+            redacted_msgs = []
+            for msg in self.conversation[-100:]:
+                redacted = dict(msg)
+                if "content" in redacted and isinstance(redacted["content"], str):
+                    redacted["content"] = self._redact_sensitive(redacted["content"])
+                redacted_msgs.append(redacted)
             data = {
                 "timestamp": datetime.datetime.now().isoformat(),
                 "mode": "stark" if self.stark_mode else "friday",
                 "safe_mode": self.safe_mode,
-                "messages": self.conversation[-100:]
+                "messages": redacted_msgs
             }
             plain = json.dumps(data, indent=2, ensure_ascii=False)
             self.session_file.write_text(
@@ -630,20 +649,38 @@ class Assistant:
 
         if any(w in cmd_lower for w in ["safe mode on", "safe mode", "enable safety"]):
             self.safe_mode = True
+            self.system.safe_mode = True
             if self._automator:
                 self._automator.safe_mode = True
+            if self._security:
+                self._security.safe_mode = True
             self.speech.speak("Safe mode engaged. I'll ask before every command.")
             return True
 
         if any(w in cmd_lower for w in ["safe mode off", "trust me", "trusted mode", "disable safety", "i trust you"]):
+            import getpass as _gp
+            _user = _gp.getuser()
+            import datetime as _dt
+            _ts = _dt.datetime.now().isoformat()
             if self.text_mode:
-                confirm = input("  WARNING: This disables all safety guards. Type 'YES DANGER' to confirm: ").strip()
-                if confirm != "YES DANGER":
-                    self.speech.speak("Safe mode remains enabled. Good choice.")
+                confirm = input("  CRITICAL: This disables ALL safety guards.\n  Type your system username to confirm: ").strip()
+                if confirm.lower() != _user.lower():
+                    self.speech.speak("Username mismatch. Safe mode remains enabled. Good choice.")
                     return True
+                confirm2 = input("  Type 'YES DANGER' again to confirm: ").strip()
+                if confirm2 != "YES DANGER":
+                    self.speech.speak("Safe mode remains enabled.")
+                    return True
+            else:
+                self.speech.speak("For safety, safe mode can only be disabled in text mode.")
+                return True
             self.safe_mode = False
+            self.system.safe_mode = False
             if self._automator:
                 self._automator.safe_mode = False
+            if self._security:
+                self._security.safe_mode = False
+            print(f"  [AUDIT] Safe mode DISABLED by {_user} at {_ts}")
             self.speech.speak("Safe mode disabled. Running commands without confirmation.")
             return True
 
@@ -833,7 +870,7 @@ class Assistant:
         hc = self.brain.health_check()
         try:
             import psutil
-            cpu = psutil.cpu_percent(interval=1)
+            cpu = psutil.cpu_percent(interval=0)
             ram = psutil.virtual_memory()
             status = f"""Suit Status Report:
   Arc Reactor:       ONLINE (Mark {MARK_NUMBER})
@@ -848,10 +885,11 @@ class Assistant:
   API Calls:         {hc.get('total_calls', 0)} ({hc.get('total_errors', 0)} errors)
   AI Time:           {hc.get('total_time_seconds', 0)}s
   Stark Mode:        {'ENGAGED' if self.stark_mode else 'STANDBY'}
-  Safety Mode:       {'ON' if self.safe_mode else 'OFF'}"""
+  Safety Mode:       {'ON' if self.safe_mode else 'OFF'}
+  Rate Limited:      {'YES (using fast model)' if getattr(self.brain, 'rate_limited', False) else 'NO'}"""
             self.speech.speak(f"All systems nominal. Arc reactor at full power. CPU at {cpu} percent. Uptime: {minutes} minutes.")
         except ImportError:
-            status = f"Suit Status:\n  Arc Reactor: ONLINE\n  Model: {self.brain.current_model}\n  Provider: {hc.get('provider', '?')}\n  Tools: {hc.get('tools_registered', 0)}\n  Stark Mode: {'ENGAGED' if self.stark_mode else 'STANDBY'}"
+            status = f"Suit Status:\n  Arc Reactor: ONLINE\n  Model: {self.brain.current_model}\n  Provider: {hc.get('provider', '?')}\n  Tools: {hc.get('tools_registered', 0)}\n  Stark Mode: {'ENGAGED' if self.stark_mode else 'STANDBY'}\n  Rate Limited: {'YES (using fast model)' if getattr(self.brain, 'rate_limited', False) else 'NO'}"
             self.speech.speak("System check complete. All primary systems are green.")
         print(f"\n  {'='*55}")
         print(f"  * STARK INDUSTRIES - {status}")
@@ -871,6 +909,8 @@ class Assistant:
                   "List apps" / "Notify [title] [msg]"
   [W] Web:        "Search [query]" / "Fetch [url]"
                   "Browse [url]" / "Google [query]"
+                  "Semantic [query]" / "Read page [url]"
+                  "Semantic [query]" / "Read page [url]"
   [F] Files:      "Read [file]" / "OCR [image]" / "Open spreadsheet"
                   "Write [file]" / "Edit [file]" / "List [dir]"
                   "Find [pattern]" / "Grep [text]"
@@ -891,6 +931,12 @@ class Assistant:
   [S] Stocks:     "Stock [symbol]" / "Market" / "Stock price [AAPL]"
   [W] Scraper:    "Scrape [url]" / "Extract links [url]" / "Check site [url]"
   [S] Security:   "Check ports" / "Firewall status" / "Security audit"
+                  "Nmap [target]" / "Shodan [query]" / "DNS [domain]"
+                  "SSL check [host]" / "WHOIS [domain]" / "SSH [host] [cmd]"
+                  "Hash [file]" / "Traceroute [target]" / "Headers [url]"
+                  "Nmap [target]" / "Shodan [query]" / "DNS [domain]"
+                  "SSL check [host]" / "WHOIS [domain]" / "SSH [host] [cmd]"
+                  "Hash [file]" / "Traceroute [target]" / "Headers [url]"
   [T] Team:       "Design architecture [project]" / "Review code"
                   "Research [topic]" / "Run team on [task]"
                   (analyst -> architect -> developer -> reviewer -> tester -> security)

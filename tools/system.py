@@ -7,6 +7,7 @@ from core.platform_utils import is_windows, is_macos, is_linux, get_platform
 class SystemTools:
     def __init__(self):
         self._psutil = None
+        self.safe_mode = True
 
     @property
     def psutil(self):
@@ -136,7 +137,9 @@ class SystemTools:
             return "Start process failed"
 
     def take_screenshot(self):
-        path = os.path.join(tempfile.gettempdir(), f"screenshot_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+        import secrets as _secrets
+        token = _secrets.token_hex(12)
+        path = os.path.join(tempfile.gettempdir(), f"friday_ss_{token}.png")
         try:
             import pyautogui
             pyautogui.screenshot(path)
@@ -190,6 +193,8 @@ class SystemTools:
         return True
 
     def get_clipboard(self):
+        if self.safe_mode:
+            return "Clipboard access blocked by safe mode. Disable safe mode first."
         try:
             import pyperclip
             text = pyperclip.paste()
@@ -198,10 +203,12 @@ class SystemTools:
             try:
                 text = self._get_clipboard_fallback()
                 return f"Clipboard: {text[:500]}" if text else "Clipboard is empty"
-            except Exception as e:
+            except Exception:
                 return "Clipboard failed"
 
     def set_clipboard(self, text):
+        if self.safe_mode:
+            return "Clipboard access blocked by safe mode. Disable safe mode first."
         try:
             import pyperclip
             pyperclip.copy(text)
@@ -210,7 +217,7 @@ class SystemTools:
             try:
                 self._set_clipboard_fallback(text)
                 return "Clipboard set"
-            except Exception as e:
+            except Exception:
                 return "Clipboard set failed"
 
     def _get_volume_windows(self):
@@ -444,11 +451,12 @@ class SystemTools:
         except ImportError:
             pass
         if is_windows():
-            safe_title = title.replace("'", "''")
-            ps_code = f"$t='*{safe_title}*'; $h=Get-Process | Where-Object {{ $_.MainWindowTitle -like $t }} | Select-Object -First 1 | ForEach-Object {{ $_.MainWindowHandle }}; if ($h -and $h -ne 0) {{ Add-Type @' using System; using System.Runtime.InteropServices; public class W {{ [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h); }} '@; [W]::SetForegroundWindow($h) }}"
+            env = os.environ.copy()
+            env['_FRIDAY_TITLE'] = str(title)
+            ps_code = "$t='*' + $env:_FRIDAY_TITLE + '*'; $h=Get-Process | Where-Object { $_.MainWindowTitle -like $t } | Select-Object -First 1 | ForEach-Object { $_.MainWindowHandle }; if ($h -and $h -ne 0) { Add-Type @' using System; using System.Runtime.InteropServices; public class W { [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h); }} '@; [W]::SetForegroundWindow($h) }"
             encoded = __import__('base64').b64encode(ps_code.encode('utf-16-le')).decode()
             subprocess.run(["powershell", "-NoProfile", "-EncodedCommand", encoded],
-                capture_output=True, text=True, timeout=10)
+                capture_output=True, text=True, timeout=10, env=env)
             return f"Attempted to focus: {title}"
         elif is_macos():
             safe_title = title.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', '\\n')
@@ -669,9 +677,10 @@ class SystemTools:
             if is_windows():
                 import json as _json
                 import base64 as _b64
-                safe_search = search.replace("'", "''")
+                env = os.environ.copy()
+                env['_FRIDAY_SEARCH'] = str(search)
                 ps_script = (
-                    '$search = \'' + safe_search + '\'\n'
+                    '$search = $env:_FRIDAY_SEARCH\n'
                     '$results = @()\n'
                     '$results += Get-StartApps | Where-Object { $_.Name -like "*$search*" } | Select-Object Name, AppId\n'
                     '$results += Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object { $_.DisplayName -like "*$search*" } | Select-Object @{n="Name";e={"$($_.DisplayName) - $($_.InstallLocation)"}}, @{n="AppId";e={"$($_.InstallLocation)"}}\n'
@@ -681,7 +690,7 @@ class SystemTools:
                 encoded = _b64.b64encode(ps_script.encode('utf-16-le')).decode()
                 r = subprocess.run(
                     ["powershell", "-NoProfile", "-EncodedCommand", encoded],
-                    capture_output=True, text=True, timeout=15
+                    capture_output=True, text=True, timeout=15, env=env
                 )
                 if r.stdout.strip():
                     try:
@@ -745,7 +754,7 @@ class SystemTools:
             {"type": "function", "function": {"name": "media_play_pause", "description": "Toggle play/pause", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "media_next", "description": "Next track", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "media_prev", "description": "Previous track", "parameters": {"type": "object", "properties": {}}}},
-            {"type": "function", "function": {"name": "list_wifi", "description": "WiFi profiles + passwords", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "list_wifi", "description": "List saved WiFi profile names/SSIDs", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "wifi_status", "description": "Current WiFi status", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "list_windows", "description": "Open window titles", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "focus_window", "description": "Focus window by title", "parameters": {"type": "object", "properties": {"title": {"type": "string", "description": "Title"}}, "required": ["title"]}}},

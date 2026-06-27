@@ -9,6 +9,8 @@ _GIT_CLONE_INJECTION_PATTERNS = re.compile(
     re.IGNORECASE
 )
 
+_GIT_ALLOWED_PROTOCOLS = ("http://", "https://", "git@", "ssh://", "git://")
+
 
 def _sanitize_git_url(url):
     if not url.startswith(("http://", "https://", "git@", "ssh://", "git://")):

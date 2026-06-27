@@ -9,6 +9,13 @@ SYSTEM_PROMPT = """You are FRIDAY -- a world-class polyglot coding AI with maste
 
 LANGUAGES: Python, JavaScript, TypeScript, Go, Rust, Java, C, C++, C#, Ruby, PHP, Swift, Kotlin, Shell/Bash, SQL, HTML/CSS, R, Dart, Lua, Perl, Scala, Haskell, Assembly, MATLAB, CUDA, Solidity, Elixir, Erlang, Fortran, COBOL, Zig, V, OCaml, Clojure, Julia, TypeScript, Groovy, PowerShell.
 
+TOOL USAGE - CRITICAL:
+- You have access to REAL system tools (get_cpu, get_memory, web_search, read_file, etc.).
+- When the user asks for system info (CPU, RAM, disk, battery, time, date, weather, etc.), you MUST call the appropriate tool instead of fabricating or simulating responses.
+- NEVER say "I don't have access" or simulate output — USE THE TOOLS provided to get real data.
+- Use the native JSON function calling format. Do NOT use XML-style <function=name> tags.
+- If a tool fails, report the error clearly. Do not make up data.
+
 RULES:
 - Produce idiomatic, production-quality code for each language.
 - Use each language's idioms, stdlib, and conventions (PEP 8, gofmt, rustfmt, etc.).
@@ -52,10 +59,14 @@ def _sanitize_error(error_msg):
     msg = str(error_msg)
     msg = re.sub(r'sk-[a-zA-Z0-9_-]{20,}', '[REDACTED_KEY]', msg)
     msg = re.sub(r'gsk_[a-zA-Z0-9_-]{20,}', '[REDACTED_KEY]', msg)
+    msg = re.sub(r'[Aa]pi[_-]?[Kk]ey["\']?\s*[:=]\s*["\']?\S{8,}', '[REDACTED_API_KEY]', msg)
+    msg = re.sub(r'(?i)(password|passwd|secret|token|auth|bearer)\s*[:=]\s*["\']?\S{8,}', r'\1=[REDACTED]', msg)
     msg = re.sub(r'C:\\\\Users\\\\[^\\\\/]+', 'C:\\\\Users\\\\[USER]', msg)
     msg = re.sub(r'/home/[^/]+', '/home/[USER]', msg)
     msg = re.sub(r'(https?://)[^@]+@', r'\1[REDACTED]@', msg)
-    return msg
+    msg = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '[IP_REDACTED]', msg)
+    msg = msg.replace('\\n', ' ').replace('\\r', ' ')
+    return msg[:2000]
 
 
 _PROVIDER_MAP = {"GROQ_API_KEY": "groq"}
@@ -65,6 +76,34 @@ def _get_secret(key):
     val = os.environ.get(key)
     if val:
         return val
+    # Check OS keychain (credential manager)
+    try:
+        if sys.platform == "win32":
+            import subprocess as _sp
+            target = "FRIDAY_API_Keys"
+            ps_script = f'''
+$path = "$env:TEMP\\{target}_{key}.xml"
+if (Test-Path $path) {{
+    $cred = Import-Clixml $path
+    $cred.GetNetworkCredential().Password
+}} else {{
+    Write-Output ""
+}}
+'''
+            r = _sp.run(["powershell", "-NoProfile", "-Command", ps_script],
+                        capture_output=True, text=True, timeout=10)
+            if r.stdout.strip():
+                return r.stdout.strip()
+        else:
+            try:
+                import keyring
+                k = keyring.get_password("FRIDAY_API_Keys", key)
+                if k:
+                    return k
+            except ImportError:
+                pass
+    except Exception:
+        pass
     # Check config.json (created by setup_keys.py)
     try:
         config_path = Path(__file__).parent.parent / "config.json"
@@ -138,11 +177,14 @@ class BaseBrain:
         deep_keywords = ["research", "analyze", "deep", "complex", "report", "write",
                          "refactor", "architecture", "implement", "build", "design",
                          "debug", "review"]
-        quick_keywords = ["cpu", "ram", "memory", "disk", "battery", "status", "time",
-                          "date", "weather", "volume", "wifi", "hello", "hi ", "hey"]
+        tool_keywords = ["cpu", "ram", "memory", "disk", "battery", "status", "time",
+                         "date", "weather", "volume", "wifi"]
+        chat_keywords = ["hello", "hi ", "hey", "thanks", "good", "morning", "evening"]
         if any(kw in prompt for kw in deep_keywords) or len(prompt) > 200:
             return self.deep_model
-        if any(kw in prompt for kw in quick_keywords) and len(prompt) < 80:
+        if any(kw in prompt for kw in tool_keywords) and len(prompt) < 80:
+            return self.smart_model
+        if any(kw in prompt for kw in chat_keywords) and len(prompt) < 40:
             return self.fast_model
         return self.smart_model
 
@@ -176,16 +218,38 @@ class BaseBrain:
             "shell|cmd|command|terminal|powershell|run|execute|script": ["run_command", "run_shell", "run_powershell", "run_script"],
             "file|read|write|edit|append|list|move|copy|delete|mkdir|find|grep|folder|directory": ["read_file", "write_file", "edit_file", "append_file", "list_files", "move_file", "copy_file", "delete_file", "create_directory", "find_files", "grep_files", "file_info"],
             "search|web|google|bing|duckduckgo|look up|find|fetch|url|http|website": ["web_search", "web_fetch"],
+            "youtube|video|transcript|subtitle|watch|yt-dlp|yt_dlp|caption|subtitles|youtube search": ["youtube_transcript", "youtube_search"],
+            "github|repo|repository|pull request|issue|fork|star": ["github_repo_info", "github_search", "github_issues"],
+            "rss|feed|atom|subscribe|blog feed": ["rss_read", "rss_search_feeds"],
+            "jina|read page|read article|read website|clean read|readable": ["jina_read"],
+            "semantic|ai search|smart search|deep search|meaning search": ["semantic_search"],
             "git|commit|push|pull|clone|branch|repo": ["git_status", "git_diff", "git_log", "git_commit", "git_add", "git_push", "git_pull", "git_clone", "git_branch", "git_checkout", "git_init", "git_remote", "git_reset"],
-            "browser|chrome|firefox|edge|open|launch|start|app|instagram|facebook|twitter|youtube": ["launch_app", "browse_url", "search_web", "open_file", "open_folder", "send_keys", "press_key", "hotkey", "click", "scroll", "list_apps", "list_all_apps", "find_installed_app"],
+            "browser|chrome|firefox|edge|open|launch|start|app|instagram|facebook|twitter": ["launch_app", "browse_url", "search_web", "open_file", "open_folder", "send_keys", "press_key", "hotkey", "click", "scroll", "list_apps", "list_all_apps", "find_installed_app"],
             "code|python|script|run|sandbox": ["run_code"],
             "remember|memory|forget|recall": ["remember", "recall", "list_memories", "forget"],
             "plan|task|step|goal|objective": ["create_plan", "execute_step", "complete_step", "fail_step", "get_progress", "update_plan", "list_plans", "load_plan"],
-            "news|headline|current|event|wikipedia|wiki": ["wikipedia_summary", "wikipedia_search", "get_daily_news", "get_current_events"],
+            "news|headline|current|event|wikipedia|wiki": ["web_search", "web_fetch", "wikipedia_summary", "wikipedia_search", "get_daily_news", "get_current_events", "rss_read", "rss_search_feeds"],
             "stock|market|price|trade|invest": ["get_stock_price", "search_stock", "get_market_summary"],
             "scrape|scraper|extract|link": ["scrape_url", "extract_links", "check_site_status"],
             "security|firewall|port|vulnerability|audit": ["check_firewall", "check_open_ports", "check_listeners", "check_security_updates", "security_best_practices"],
-            "research|deep|analyze": ["deep_research", "research_topic", "design_architecture"],
+            "report|pentest report|security report|html report|pdf report|scan report": ["generate_report", "check_firewall", "check_open_ports", "check_running_services", "check_listeners", "security_best_practices"],
+            "nmap|scan port|port scan|service scan|network scan": ["nmap_scan", "check_open_ports"],
+            "shodan|iot|exposed device|internet scan": ["shodan_search", "shodan_host_info"],
+            "dns lookup|dns record|nameserver|subdomain": ["dns_lookup", "subdomain_enum"],
+            "whois|domain info|registration": ["whois_lookup"],
+            "ssl|tls|certificate|cert check": ["ssl_check"],
+            "ssh|remote command|remote host": ["ssh_command"],
+            "hash file|integrity|checksum|md5|sha256": ["hash_file", "hash_identify"],
+            "traceroute|trace route|network path": ["traceroute"],
+            "banner grab|service banner|grab banner": ["banner_grab"],
+            "security header|hsts|csp|x-frame|header check": ["web_headers_check"],
+            "running service|list service|service status": ["check_running_services"],
+            "nikto|web vuln|web vulnerability|web scan|nikto scan": ["nikto_scan"],
+            "sqlmap|sql inject|sqli|sql injection test": ["sqlmap_scan"],
+            "hydra|brute force|brute force login|crack password|password attack": ["hydra_brute"],
+            "gobuster|dirb|directory brute|dir brute|directory scan": ["gobuster_scan"],
+            "ffuf|web fuzzer|fuzz web|fuzzing": ["ffuf_fuzz"],
+            "research|deep|analyze": ["semantic_search", "jina_read", "deep_research", "research_topic"],
             "ocr|image|spreadsheet": ["ocr_image", "read_spreadsheet"],
             "lint|format|scaffold|package|install|detect.*language|run.*file": ["detect_language", "detect_project", "lint_file", "format_file", "scaffold_project", "package_install", "package_list", "run_file"],
             "golang|rustlang|typescript|javascript|csharp|ruby on rails|kotlin|dart|elixir|scala|haskell|fortran|cobol|solidity|assembly language": ["detect_language", "lint_file", "format_file", "scaffold_project", "run_file"],
@@ -210,7 +274,114 @@ class BaseBrain:
         raise NotImplementedError
 
     def _extract_tool_calls(self, msg):
-        return msg.get("tool_calls", [])
+        tool_calls = msg.get("tool_calls", [])
+        if tool_calls:
+            return tool_calls
+        content = msg.get("content", "")
+        if not content:
+            return []
+        # Fallback 1: parse <function=TOOLNAME>{...}</function> format
+        func_pattern = re.compile(r'<function=(\w+)>(.+?)</function>', re.DOTALL)
+        for match in func_pattern.finditer(content):
+            name = match.group(1)
+            args_raw = match.group(2).strip()
+            if name in self.tool_registry:
+                try:
+                    args = json.loads(args_raw)
+                except json.JSONDecodeError:
+                    # Try wrapping keys in quotes if bare keys exist
+                    try:
+                        args = json.loads(re.sub(r'(?<!")(\w+)(?=\s*:)', r'"\1"', args_raw))
+                    except json.JSONDecodeError:
+                        args = {}
+                msg["content"] = (content[:match.start()] + content[match.end():]).strip()
+                return [{"id": f"xml_{name}", "function": {"name": name, "arguments": args}}]
+        # Fallback 2: parse <TOOLNAME>{"key": "val"}</TOOLNAME> format
+        xml_pattern = re.compile(r'<(\w+)>(.+?)</\1>', re.DOTALL)
+        for match in xml_pattern.finditer(content):
+            name = match.group(1)
+            args_raw = match.group(2).strip()
+            if name in self.tool_registry:
+                try:
+                    args = json.loads(args_raw)
+                except json.JSONDecodeError:
+                    try:
+                        args = json.loads(re.sub(r'(?<!")(\w+)(?=\s*:)', r'"\1"', args_raw))
+                    except json.JSONDecodeError:
+                        args = {}
+                msg["content"] = (content[:match.start()] + content[match.end():]).strip()
+                return [{"id": f"xml_{name}", "function": {"name": name, "arguments": args}}]
+        # Fallback 3: parse <function>TOOLNAME{...}</function> format (no = sign)
+        func_tag = re.compile(r'<function>\s*(\w+)\s*(\{.*?\})\s*</function>', re.DOTALL)
+        for match in func_tag.finditer(content):
+            name = match.group(1)
+            args_raw = match.group(2).strip()
+            if name in self.tool_registry:
+                try:
+                    args = json.loads(args_raw)
+                except json.JSONDecodeError:
+                    try:
+                        args = json.loads(re.sub(r'(?<!")(\w+)(?=\s*:)', r'"\1"', args_raw))
+                    except json.JSONDecodeError:
+                        args = {}
+                msg["content"] = (content[:match.start()] + content[match.end():]).strip()
+                return [{"id": f"func_{name}", "function": {"name": name, "arguments": args}}]
+        # Fallback 3.5: parse <function=TOOLNAME{args}></function> format (inline args)
+        inline_pattern = re.compile(r'<function=(\w+)\s*(\{.*?\})\s*></function>', re.DOTALL)
+        for match in inline_pattern.finditer(content):
+            name = match.group(1)
+            args_raw = match.group(2).strip()
+            if name in self.tool_registry:
+                try:
+                    args = json.loads(args_raw)
+                except json.JSONDecodeError:
+                    try:
+                        args = json.loads(re.sub(r'(?<!")(\w+)(?=\s*:)', r'"\1"', args_raw))
+                    except json.JSONDecodeError:
+                        args = {}
+                msg["content"] = (content[:match.start()] + content[match.end():]).strip()
+                return [{"id": f"inline_{name}", "function": {"name": name, "arguments": args}}]
+        # Fallback 4: parse raw JSON function call from content
+        idx = 0
+        while True:
+            start = content.find("{", idx)
+            if start == -1:
+                break
+            depth = 0
+            end = -1
+            for i in range(start, len(content)):
+                if content[i] == "{":
+                    depth += 1
+                elif content[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            if end != -1:
+                try:
+                    parsed = json.loads(content[start:end])
+                    if isinstance(parsed, dict):
+                        name = parsed.get("name", "")
+                        if not name and "function" in parsed and isinstance(parsed["function"], dict):
+                            name = parsed["function"].get("name", "")
+                        # Handle {"function": "tool_name", "args": {...}} format
+                        if not name and "function" in parsed and isinstance(parsed["function"], str):
+                            name = parsed["function"]
+                            args_raw = parsed.get("args", {})
+                        if name and name in self.tool_registry:
+                            if "args_raw" not in locals():
+                                args_raw = parsed.get("arguments") or parsed.get("parameters") or {}
+                            if isinstance(args_raw, str):
+                                try:
+                                    args_raw = json.loads(args_raw)
+                                except json.JSONDecodeError:
+                                    args_raw = {}
+                            msg["content"] = (content[:start] + content[end:]).strip()
+                            return [{"id": f"json_{name}", "function": {"name": name, "arguments": args_raw}}]
+                except json.JSONDecodeError:
+                    pass
+            idx = start + 1 if end == -1 else end
+        return tool_calls
 
     def _clean_content(self, content):
         if not content:
@@ -268,7 +439,7 @@ class BaseBrain:
         max_rounds = 3
         if len(last_user) > 200 or any(kw in last_user.lower() for kw in ["research", "analyze", "deep", "complex", "build", "design"]):
             max_rounds = 4
-        if len(last_user) < 80 and any(kw in last_user.lower() for kw in ["cpu", "ram", "hello", "hi", "hey", "thanks"]):
+        if len(last_user) < 40 and any(kw in last_user.lower() for kw in ["hello", "hi", "hey", "thanks", "goodbye", "bye"]):
             max_rounds = 1
         max_rounds = min(max_rounds, self.max_tool_rounds)
 
@@ -278,9 +449,9 @@ class BaseBrain:
             round_num += 1
             result = self.chat(messages, tools_enabled=True)
             msg = result.get("message", {})
-            raw_content = msg.get("content", "")
-            content = self._clean_content(raw_content)
             tool_calls = self._extract_tool_calls(msg)
+            # Re-read content after _extract_tool_calls may have stripped XML fallback text
+            content = self._clean_content(msg.get("content", ""))
 
             if not tool_calls:
                 if content and on_speak:
@@ -291,7 +462,8 @@ class BaseBrain:
             if content and on_speak:
                 on_speak(content)
 
-            messages.append({"role": "assistant", "content": content or ""})
+            assistant_msg = {"role": "assistant", "content": content or "", "tool_calls": tool_calls}
+            messages.append(assistant_msg)
 
             loop_break = False
             for tc in tool_calls:
@@ -360,8 +532,20 @@ class BaseBrain:
                     "content": sanitized
                 })
             else:
-                content = content or ("..." if role == "assistant" else "")
-                msgs.append({"role": role, "content": content})
+                entry = {"role": role, "content": content or ("..." if role == "assistant" else "")}
+                if role == "assistant" and "tool_calls" in m and m["tool_calls"]:
+                    entry["tool_calls"] = [
+                        {
+                            "id": tc.get("id", ""),
+                            "type": tc.get("type", "function"),
+                            "function": {
+                                "name": tc["function"]["name"],
+                                "arguments": tc["function"]["arguments"] if isinstance(tc["function"]["arguments"], str) else json.dumps(tc["function"]["arguments"])
+                            }
+                        }
+                        for tc in m["tool_calls"]
+                    ]
+                msgs.append(entry)
         return msgs
 
 
@@ -375,6 +559,8 @@ class GroqBrain(BaseBrain):
             raise ValueError("Groq API key not found. Run: python setup_keys.py")
         from groq import Groq
         self.client = Groq(api_key=api_key)
+        self.rate_limited = False
+        self._retrying_rate_limit = False
 
     def _default_fast(self):
         return "llama-3.1-8b-instant"
@@ -424,9 +610,77 @@ class GroqBrain(BaseBrain):
                     }
                     for tc in msg.tool_calls
                 ]
+            if self.rate_limited:
+                self.rate_limited = False
             return result
         except Exception as e:
-            sanitized = _sanitize_error(str(e))
+            err_str = str(e)
+            # Auto-fallback to fast model on rate limit / quota exceeded
+            _rate_limit_keywords = ["429", "rate limit", "rate_limit", "quota",
+                                    "exceeded", "token limit", "too many requests"]
+            if any(kw in err_str.lower() for kw in _rate_limit_keywords):
+                if not self._retrying_rate_limit and self.current_model != self.fast_model:
+                    self._retrying_rate_limit = True
+                    self.rate_limited = True
+                    self.current_model = self.fast_model
+                    kwargs["model"] = self.fast_model
+                    kwargs["max_tokens"] = 512
+                    try:
+                        fallback_resp = self.client.chat.completions.create(**kwargs, timeout=30)
+                        choice = fallback_resp.choices[0]
+                        msg = choice.message
+                        fallback_result = {"message": {"role": "assistant", "content": msg.content or "", "tool_calls": []}}
+                        if msg.tool_calls:
+                            fallback_result["message"]["tool_calls"] = [
+                                {"id": tc.id, "type": tc.type,
+                                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                                for tc in msg.tool_calls
+                            ]
+                        err_str = f"[Daily token limit hit. Auto-switched to {self.fast_model}. Run 'list models' to switch back.]"
+                        fallback_result["message"]["content"] = (fallback_result["message"]["content"] or "") + "\n\n" + err_str
+                        self._retrying_rate_limit = False
+                        return fallback_result
+                    except Exception:
+                        self._retrying_rate_limit = False
+                        pass
+            # Try to extract the failed generation from tool_use_failed errors
+            if "tool_use_failed" in err_str:
+                fg_match = re.search(r"'failed_generation':\s*'([^']+)'", err_str)
+                if fg_match:
+                    raw = fg_match.group(1).replace("\\'", "'")
+                    # Try to parse <function=TOOLNAME{...}> format
+                    func_inline = re.match(r'<function=(\w+)\s*(\{.*?\})\s*></function>', raw, re.DOTALL)
+                    if func_inline:
+                        name = func_inline.group(1)
+                        args_raw = func_inline.group(2).strip()
+                        if name in self.tool_registry:
+                            try:
+                                args = json.loads(args_raw)
+                            except json.JSONDecodeError:
+                                args = {}
+                            return {"message": {"role": "assistant", "content": "", "tool_calls": [{"id": f"fg_{name}", "type": "function", "function": {"name": name, "arguments": args}}]}}
+                    # Try to parse raw content as fallback
+                    content_match = re.match(r'<function=(\w+)>(.*?)</function>', raw, re.DOTALL)
+                    if content_match:
+                        name = content_match.group(1)
+                        args_raw = content_match.group(2).strip()
+                        if name in self.tool_registry:
+                            try:
+                                args = json.loads(args_raw)
+                            except json.JSONDecodeError:
+                                args = {}
+                            return {"message": {"role": "assistant", "content": "", "tool_calls": [{"id": f"fg_{name}", "type": "function", "function": {"name": name, "arguments": args}}]}}
+                # Retry without tools if model generated malformed function calls
+                if tools_enabled:
+                    kwargs.pop("tools", None)
+                    kwargs.pop("tool_choice", None)
+                    try:
+                        response = self.client.chat.completions.create(**kwargs, timeout=30)
+                        content = response.choices[0].message.content or ""
+                        return {"message": {"role": "assistant", "content": content, "tool_calls": []}}
+                    except Exception:
+                        pass
+            sanitized = _sanitize_error(err_str)
             error_msg = f"[AI backend error: {sanitized}]"
             return {"message": {"role": "assistant", "content": error_msg}}
 
@@ -449,8 +703,37 @@ class GroqBrain(BaseBrain):
                     full += token
                     if on_token:
                         on_token(token)
+            if self.rate_limited:
+                self.rate_limited = False
             return full.strip()
-        except Exception:
+        except Exception as e:
+            err_str = str(e)
+            _rate_limit_keywords = ["429", "rate limit", "rate_limit", "quota",
+                                    "exceeded", "token limit", "too many requests"]
+            if any(kw in err_str.lower() for kw in _rate_limit_keywords):
+                if self.current_model != self.fast_model:
+                    self.rate_limited = True
+                    self.current_model = self.fast_model
+                    try:
+                        stream = self.client.chat.completions.create(
+                            model=self.fast_model,
+                            messages=msgs,
+                            temperature=0.1,
+                            max_tokens=512,
+                            stream=True
+                        )
+                        full = f"[Rate limited. Auto-switched to {self.fast_model}.]\n"
+                        if on_token:
+                            on_token(full)
+                        for chunk in stream:
+                            token = chunk.choices[0].delta.content or ""
+                            if token:
+                                full += token
+                                if on_token:
+                                    on_token(token)
+                        return full.strip()
+                    except Exception:
+                        return f"[Groq API error: rate limit hit. Switched to {self.fast_model} but request still failed.]"
             return "[Groq API error: request failed]"
 
 

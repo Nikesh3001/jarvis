@@ -114,7 +114,10 @@ class Planner:
         return "Saved plans:\n" + "\n".join(lines)
 
     def load_plan(self, filename):
-        path = PLANS_DIR / filename
+        safe_name = Path(filename).name
+        if safe_name != filename or ".." in filename or "/" in filename or "\\" in filename:
+            return f"Invalid filename: {filename}"
+        path = PLANS_DIR / safe_name
         if not path.exists():
             return f"Plan not found: {filename}"
         try:

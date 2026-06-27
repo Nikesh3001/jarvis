@@ -400,6 +400,123 @@ html, body {
   max-width: 360px;
 }
 
+/* ── Speaking Indicator ─────────────────────────────────────────────────── */
+.bubble.speaking {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 8px var(--accent-glow), 0 0 16px rgba(56, 189, 248, 0.15);
+  animation: speakPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes speakPulse {
+  0%, 100% { box-shadow: 0 0 8px var(--accent-glow), 0 0 16px rgba(56, 189, 248, 0.15); }
+  50%      { box-shadow: 0 0 14px var(--accent-glow), 0 0 28px rgba(56, 189, 248, 0.25); }
+}
+
+/* ── Voice Controls ──────────────────────────────────────────────────────── */
+.voice-controls {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.voice-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.voice-btn:hover { border-color: var(--accent-dim); color: var(--text); }
+
+.voice-btn.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.voice-btn.active svg { filter: drop-shadow(0 0 4px var(--accent-glow)); }
+
+.voice-setting {
+  margin-bottom: 8px;
+}
+
+.voice-setting label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.speed-val {
+  font-family: var(--mono);
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.voice-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 11px;
+  font-family: var(--font);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.voice-select:focus { border-color: var(--accent); }
+.voice-select option { background: var(--bg-secondary); color: var(--text); }
+
+.voice-slider {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-input);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.voice-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-secondary);
+  box-shadow: 0 0 6px var(--accent-glow);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.voice-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+.voice-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-secondary);
+  box-shadow: 0 0 6px var(--accent-glow);
+  cursor: pointer;
+}
+
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .app { grid-template-columns: 1fr; }
