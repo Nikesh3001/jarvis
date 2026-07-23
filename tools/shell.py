@@ -38,8 +38,7 @@ BLOCKED_PATTERNS = re.compile(
     r"Clear-EventLog|Remove-EventLog|"
     r"Get-ChildItem\s+.*\\\.git|Get-Content\s+.*\\\.git|"
     r"Remove-Item|rm\s+-recurse|rmdir\s+/[qs]|"
-    r">\s*\\\\.\w+",
-    r")",
+    r">\s*\\\\.\w+)",
     re.IGNORECASE
 )
 
