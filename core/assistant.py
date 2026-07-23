@@ -58,7 +58,7 @@ def _decrypt_data(data):
         raise ValueError("Failed to decrypt data: invalid token or key")
 
 VERSION = "3.5.0"
-MARK_NUMBER = 86
+MARK_NUMBER = 88
 
 ARC_REACTOR = r"""
          \   |   /

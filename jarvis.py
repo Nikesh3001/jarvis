@@ -8,7 +8,7 @@ try:
 except Exception:
     pass
 
-VERSION = "3.5.0"
+VERSION = "4.0.0"
 
 
 def main():
