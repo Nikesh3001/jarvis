@@ -636,10 +636,9 @@ class GroqBrain(BaseBrain):
     ]
 
     def __init__(self, config=None):
-        super().__init__(config)
-
         _load_env()
         self._or_key = os.environ.get("OPENROUTER_API_KEY") or ""
+        super().__init__(config)
         self._api_keys = []
         if not self._or_key:
             primary = self.config.get("api_key") or _require_secret("GROQ_API_KEY", "Groq")
