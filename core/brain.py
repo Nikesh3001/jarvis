@@ -627,10 +627,9 @@ class BaseBrain:
 class GroqBrain(BaseBrain):
     OPENROUTER_BASE = "https://openrouter.ai/api/v1"
     _FALLBACK_MODELS = [
-        "anthropic/claude-sonnet-5",
-        "anthropic/claude-opus-4.8",
-        "anthropic/claude-sonnet-4.6",
-        "anthropic/claude-haiku-4.5",
+        "~anthropic/claude-sonnet-latest",
+        "~anthropic/claude-opus-latest",
+        "~anthropic/claude-haiku-latest",
         "openai/gpt-4o-mini",
         "meta-llama/llama-3.3-70b-instruct",
     ]
@@ -680,13 +679,13 @@ class GroqBrain(BaseBrain):
         self.client = Groq(api_key=self._api_keys[self._key_index])
 
     def _default_fast(self):
-        return "anthropic/claude-haiku-4.5" if self._or_key else "llama-3.1-8b-instant"
+        return "~anthropic/claude-haiku-latest" if self._or_key else "llama-3.1-8b-instant"
 
     def _default_smart(self):
-        return "anthropic/claude-sonnet-5" if self._or_key else "llama-3.3-70b-versatile"
+        return "~anthropic/claude-sonnet-latest" if self._or_key else "llama-3.3-70b-versatile"
 
     def _default_deep(self):
-        return "anthropic/claude-opus-4.8" if self._or_key else "llama-3.3-70b-versatile"
+        return "~anthropic/claude-opus-latest" if self._or_key else "llama-3.3-70b-versatile"
 
     def list_models(self):
         try:
