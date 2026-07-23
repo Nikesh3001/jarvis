@@ -25,6 +25,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.assistant import VERSION
 
 API_KEY = os.environ.get("FRIDAY_API_KEY", "")
+
+
+def _generate_csrf():
+    import secrets
+    token = secrets.token_urlsafe(32)
+    sig = hmac.new(API_KEY.encode() if API_KEY else b"friday", token.encode(), hashlib.sha256).hexdigest()[:16]
+    return f"{token}.{sig}"
+
+
+def _validate_csrf(token):
+    if not token or token.count(".") != 1:
+        return False
+    t, sig = token.split(".")
+    expected = hmac.new(API_KEY.encode() if API_KEY else b"friday", t.encode(), hashlib.sha256).hexdigest()[:16]
+    return hmac.compare_digest(sig, expected)
 _CORS_ORIGINS_STR = os.environ.get("FRIDAY_CORS_ORIGINS",
                                      "http://127.0.0.1:8080,http://localhost:8080")
 

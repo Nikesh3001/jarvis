@@ -50,7 +50,7 @@ class WebTools:
                 lines.append(f"{i+1}. {title}\n   {href}\n   {snippet}")
             return "Search results:\n" + "\n\n".join(lines)
         except Exception as e:
-            return f"Search failed ({type(e).__name__})"
+            return "Search failed"
 
     def fetch(self, url):
         try:
@@ -86,7 +86,7 @@ class WebTools:
         except ValueError as e:
             return f"Blocked: {e}"
         except Exception as e:
-            return f"Fetch failed ({type(e).__name__})"
+            return "Fetch failed"
 
     def get_tool_definitions(self):
         return [

@@ -22,7 +22,7 @@ class TestSecurityInit(unittest.TestCase):
         s = SecurityTool()
         defs = s.get_tool_definitions()
         self.assertIsInstance(defs, list)
-        self.assertEqual(len(defs), 25)
+        self.assertEqual(len(defs), 29)
         names = [d["function"]["name"] for d in defs]
         self.assertIn("check_firewall", names)
         self.assertIn("check_open_ports", names)

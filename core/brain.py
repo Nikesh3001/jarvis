@@ -72,14 +72,16 @@ def _sanitize_error(error_msg):
     msg = str(error_msg)
     msg = re.sub(r'sk-[a-zA-Z0-9_-]{20,}', '[REDACTED_KEY]', msg)
     msg = re.sub(r'gsk_[a-zA-Z0-9_-]{20,}', '[REDACTED_KEY]', msg)
+    msg = re.sub(r'org_[a-zA-Z0-9_-]{20,}', '[REDACTED_ORG]', msg)
     msg = re.sub(r'[Aa]pi[_-]?[Kk]ey["\']?\s*[:=]\s*["\']?\S{8,}', '[REDACTED_API_KEY]', msg)
     msg = re.sub(r'(?i)(password|passwd|secret|token|auth|bearer)\s*[:=]\s*["\']?\S{8,}', r'\1=[REDACTED]', msg)
     msg = re.sub(r'C:\\\\Users\\\\[^\\\\/]+', 'C:\\\\Users\\\\[USER]', msg)
     msg = re.sub(r'/home/[^/]+', '/home/[USER]', msg)
     msg = re.sub(r'(https?://)[^@]+@', r'\1[REDACTED]@', msg)
     msg = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '[IP_REDACTED]', msg)
+    msg = re.sub(r'\d{1,3}m\d{2}\.\d+s', '[REDACTED_TIME]', msg)
     msg = msg.replace('\\n', ' ').replace('\\r', ' ')
-    return msg[:2000]
+    return msg[:1024]
 
 
 _PROVIDER_MAP = {"GROQ_API_KEY": "groq"}
@@ -165,6 +167,51 @@ class BaseBrain:
         self.tool_registry = {}
         self.tool_definitions = []
         self._telemetry = {"calls": 0, "errors": 0, "tokens": 0, "total_time": 0}
+        self._last_think_content = ""
+
+    def _extract_thinking_metrics(self):
+        metrics = {
+            "has_analysis": False, "has_context": False, "has_plan": False,
+            "has_reasoning": False, "has_verification": False, "has_improvement": False,
+            "confidence": 0, "reasoning_depth": 0, "quality_score": 0,
+            "sections": [], "section_words": {},
+        }
+        content = self._last_think_content
+        think_match = re.search(r"<think>(.*?)</think>", content, re.DOTALL)
+        if not think_match:
+            return metrics
+        think_text = think_match.group(1)
+        sections_found = re.findall(r"\*\*(\w+):", think_text)
+        metrics["sections"] = sections_found
+        section_names = {
+            "analysis": "has_analysis", "context": "has_context",
+            "plan": "has_plan", "reasoning": "has_reasoning",
+            "verification": "has_verification", "improvement": "has_improvement",
+        }
+        for section_key, metric_key in section_names.items():
+            if section_key in think_text.lower():
+                metrics[metric_key] = True
+        for section in sections_found:
+            section_lower = section.lower()
+            m = re.search(
+                r"\*\*" + re.escape(section) + r":\s*(.*?)(?=\n\s*\*\*|\Z)",
+                think_text, re.DOTALL
+            )
+            if m:
+                metrics["section_words"][section_lower] = len(m.group(1).split())
+        conf_m = re.search(r"\*\*CONFIDENCE:\*{0,2}\s*(\d+)", think_text)
+        if conf_m:
+            metrics["confidence"] = int(conf_m.group(1))
+        present = sum(1 for k in ["has_analysis", "has_plan", "has_reasoning",
+                                   "has_verification", "has_improvement"] if metrics[k])
+        metrics["reasoning_depth"] = present
+        score = present * 2
+        if metrics["confidence"] >= 7:
+            score += 1
+        if metrics["has_analysis"] and metrics["has_verification"]:
+            score += 1
+        metrics["quality_score"] = min(score, 10)
+        return metrics
 
     def _default_fast(self):
         return "llama-3.1-8b-instant"
@@ -397,6 +444,7 @@ class BaseBrain:
         return tool_calls
 
     def _clean_content(self, content):
+        self._last_think_content = content or ""
         if not content:
             return content
         if '<think>' in content:
@@ -577,99 +625,152 @@ class BaseBrain:
 
 
 class GroqBrain(BaseBrain):
+    OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+    _FALLBACK_MODELS = [
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-opus-4.8",
+        "anthropic/claude-sonnet-4.6",
+        "anthropic/claude-haiku-4.5",
+        "openai/gpt-4o-mini",
+        "meta-llama/llama-3.3-70b-instruct",
+    ]
+
     def __init__(self, config=None):
         super().__init__(config)
 
         _load_env()
-        api_key = self.config.get("api_key") or _require_secret("GROQ_API_KEY", "Groq")
-        if not api_key:
-            raise ValueError("Groq API key not found. Run: python setup_keys.py")
-        from groq import Groq
-        self.client = Groq(api_key=api_key)
+        self._or_key = os.environ.get("OPENROUTER_API_KEY") or ""
+        self._api_keys = []
+        if not self._or_key:
+            primary = self.config.get("api_key") or _require_secret("GROQ_API_KEY", "Groq")
+            if primary:
+                self._api_keys.append(primary)
+            for i in range(2, 10):
+                k = os.environ.get(f"GROQ_API_KEY_{i}")
+                if k:
+                    self._api_keys.append(k)
+            if not self._api_keys:
+                raise ValueError("No API keys found. Set OPENROUTER_API_KEY or GROQ_API_KEY.")
+            from groq import Groq
+            self._key_index = 0
+            self.client = Groq(api_key=self._api_keys[0])
+        else:
+            self._key_index = 0
+            self._api_keys = [self._or_key]
+            self.client = None
+            self._init_openrouter()
         self.rate_limited = False
         self._retrying_rate_limit = False
 
+    def _init_openrouter(self):
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise ImportError("Install openai: pip install openai")
+        self.client = OpenAI(
+            base_url=self.OPENROUTER_BASE,
+            api_key=self._or_key,
+            default_headers={"HTTP-Referer": "https://github.com/Nikesh3001/jarvis"},
+        )
+
+    def _rotate_key(self):
+        if self._or_key:
+            return
+        self._key_index = (self._key_index + 1) % len(self._api_keys)
+        from groq import Groq
+        self.client = Groq(api_key=self._api_keys[self._key_index])
+
     def _default_fast(self):
-        return "llama-3.1-8b-instant"
+        return "anthropic/claude-haiku-4.5" if self._or_key else "llama-3.1-8b-instant"
 
     def _default_smart(self):
-        return "llama-3.3-70b-versatile"
+        return "anthropic/claude-sonnet-5" if self._or_key else "llama-3.3-70b-versatile"
 
     def _default_deep(self):
-        return "llama-3.3-70b-versatile"
+        return "anthropic/claude-opus-4.8" if self._or_key else "llama-3.3-70b-versatile"
 
     def list_models(self):
         try:
+            if self._or_key:
+                import requests
+                r = requests.get(f"{self.OPENROUTER_BASE}/models",
+                                 headers={"Authorization": f"Bearer {self._or_key}"}, timeout=10)
+                return sorted(m["id"] for m in r.json().get("data", []))
             models = [m.id for m in self.client.models.list().data]
             return sorted(models)
         except Exception:
             return ["[Error listing AI models: request failed]"]
 
-    def chat(self, messages, tools_enabled=True):
-        model = self.current_model
-        msgs = self._build_messages(messages)
-
+    def _build_kwargs(self, model, msgs, tools_enabled, messages):
         is_deep = model in (self.deep_model, self.smart_model)
         kwargs = {
-            "model": model,
             "messages": msgs,
             "temperature": 0.1,
-            "max_tokens": 2048 if is_deep else 512,
+            "max_tokens": 4096 if is_deep else 2048,
         }
+        if self._or_key:
+            kwargs["model"] = self._FALLBACK_MODELS[0]
+            kwargs["extra_body"] = {"models": self._FALLBACK_MODELS}
+        else:
+            kwargs["model"] = model
         if tools_enabled and self.tool_definitions:
             kwargs["tools"] = self._relevant_tools(messages)
             kwargs["tool_choice"] = "auto"
+        return kwargs
+
+    def _parse_response(self, response):
+        choice = response.choices[0]
+        msg = choice.message
+        result = {"message": {"role": "assistant", "content": msg.content or "", "tool_calls": []}}
+        if msg.tool_calls:
+            result["message"]["tool_calls"] = [
+                {"id": tc.id, "type": tc.type,
+                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                for tc in msg.tool_calls
+            ]
+        return result
+
+    def chat(self, messages, tools_enabled=True):
+        msgs = self._build_messages(messages)
+        kwargs = self._build_kwargs(self.current_model, msgs, tools_enabled, messages)
 
         try:
             response = self.client.chat.completions.create(**kwargs, timeout=30)
-            choice = response.choices[0]
-            msg = choice.message
-            result = {"message": {"role": "assistant", "content": msg.content or "", "tool_calls": []}}
-            if msg.tool_calls:
-                result["message"]["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": tc.type,
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
-                        }
-                    }
-                    for tc in msg.tool_calls
-                ]
+            result = self._parse_response(response)
+            if self._or_key:
+                actual = getattr(response, "model", "") or ""
+                if actual and actual != kwargs.get("model"):
+                    self.current_model = actual
             if self.rate_limited:
                 self.rate_limited = False
             return result
         except Exception as e:
             err_str = str(e)
-            # Auto-fallback to fast model on rate limit / quota exceeded
             _rate_limit_keywords = ["429", "rate limit", "rate_limit", "quota",
                                     "exceeded", "token limit", "too many requests"]
             if any(kw in err_str.lower() for kw in _rate_limit_keywords):
+                if self._api_keys and len(self._api_keys) > 1 and not self._or_key:
+                    self._rotate_key()
+                    try:
+                        return self.chat(messages, tools_enabled)
+                    except Exception:
+                        pass
                 if not self._retrying_rate_limit and self.current_model != self.fast_model:
                     self._retrying_rate_limit = True
                     self.rate_limited = True
                     self.current_model = self.fast_model
-                    kwargs["model"] = self.fast_model
-                    kwargs["max_tokens"] = 512
+                    kwargs = self._build_kwargs(self.fast_model, msgs, tools_enabled, messages)
+                    kwargs["max_tokens"] = 2048
                     try:
                         fallback_resp = self.client.chat.completions.create(**kwargs, timeout=30)
-                        choice = fallback_resp.choices[0]
-                        msg = choice.message
-                        fallback_result = {"message": {"role": "assistant", "content": msg.content or "", "tool_calls": []}}
-                        if msg.tool_calls:
-                            fallback_result["message"]["tool_calls"] = [
-                                {"id": tc.id, "type": tc.type,
-                                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                                for tc in msg.tool_calls
-                            ]
-                        err_str = f"[Daily token limit hit. Auto-switched to {self.fast_model}. Run 'list models' to switch back.]"
+                        fallback_result = self._parse_response(fallback_resp)
+                        tag = "[OpenRouter]" if self._or_key else f"[Key {self._key_index + 1}/{len(self._api_keys)}]"
+                        err_str = f"{tag} Rate limit hit. Switched to {self.fast_model}."
                         fallback_result["message"]["content"] = (fallback_result["message"]["content"] or "") + "\n\n" + err_str
                         self._retrying_rate_limit = False
                         return fallback_result
                     except Exception:
                         self._retrying_rate_limit = False
-                        pass
             # Try to extract the failed generation from tool_use_failed errors
             if "tool_use_failed" in err_str:
                 fg_match = re.search(r"'failed_generation':\s*'([^']+)'", err_str)
@@ -716,13 +817,18 @@ class GroqBrain(BaseBrain):
         for m in messages[-10:]:
             msgs.append({"role": m["role"], "content": m.get("content", "")})
         try:
-            stream = self.client.chat.completions.create(
-                model=self.current_model,
-                messages=msgs,
-                temperature=0.1,
-                max_tokens=512,
-                stream=True
-            )
+            kwargs = {
+                "messages": msgs,
+                "temperature": 0.1,
+                "max_tokens": 2048,
+                "stream": True,
+            }
+            if self._or_key:
+                kwargs["model"] = self._FALLBACK_MODELS[0]
+                kwargs["extra_body"] = {"models": self._FALLBACK_MODELS}
+            else:
+                kwargs["model"] = self.current_model
+            stream = self.client.chat.completions.create(**kwargs)
             full = ""
             for chunk in stream:
                 token = chunk.choices[0].delta.content or ""

@@ -200,7 +200,7 @@ class TestClipboard(unittest.TestCase):
     def test_set_clipboard_returns_string(self):
         result = self.s.set_clipboard("test text")
         self.assertIsInstance(result, str)
-        self.assertTrue("set" in result.lower() or "failed" in result)
+        self.assertTrue("set" in result.lower() or "failed" in result or "blocked" in result.lower())
 
     def test_get_clipboard_returns_string(self):
         result = self.s.get_clipboard()

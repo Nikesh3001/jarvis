@@ -220,6 +220,7 @@ class Assistant:
         registry = {
             "groq": GroqBrain,
             "ollama": OllamaBrain,
+            "openrouter": GroqBrain,
         }
         cls = registry.get(provider)
         if cls is None:
@@ -816,6 +817,12 @@ class Assistant:
         say_any = _re.match(r'^say\s+(.+)$', cmd_lower)
         if say_any:
             self.speech.speak(say_any.group(1).capitalize())
+            return True
+
+        models = self.brain.list_models()
+        if isinstance(models, list) and cmd.strip() in models:
+            self.brain.current_model = cmd.strip()
+            self.speech.speak(f"Switched to {cmd.strip()}")
             return True
 
         self._process_with_ai(cmd)
