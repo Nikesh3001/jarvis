@@ -1,6 +1,6 @@
-# JARVIS / FRIDAY — Terminal AI Assistant
+# JARVIS / FRIDAY — AI Terminal Assistant & Cybersecurity Platform
 
-A dual-personality voice AI assistant for your terminal with full system control, cybersecurity toolkit, and web dashboard. Powered by **Groq** (cloud) or **Ollama** (local).
+A dual-personality AI assistant with full system control, cybersecurity toolkit, multi-agent orchestration, IDE capabilities, and web dashboard. Powered by **Groq** (cloud) or **Ollama** (local).
 
 ## Features
 
@@ -15,12 +15,28 @@ A dual-personality voice AI assistant for your terminal with full system control
 - **File Editor**: Read, write, edit, search, copy, move, delete files with path traversal protection
 - **Git Integration**: Clone, commit, push, pull, branch, status — with URL injection protection
 - **Shell Access**: Command execution with extensive blocklist for dangerous patterns
-- **Automation**: Browser automation, GUI interaction, scheduled tasks (via `automator.py`)
+- **Automation**: Browser automation, GUI interaction, scheduled tasks
 - **Plugin System**: Hot-loadable Python plugins with hash-based integrity verification
 - **Memory & Code Index**: Conversation persistence (encrypted), vector code search
-- **Multi-Agent**: Sub-agents for parallel research and complex task decomposition
+- **Multi-Agent System**: Sub-agents for parallel research, complex task decomposition, and agent swarms
+- **Task Orchestrator**: Decompose complex goals into multi-step plans with autonomous execution
+- **Agent Swarm**: Collaborative multi-agent teams for parallel problem solving
 - **Deep Research**: Iterative web search with source analysis and structured reports
+- **Project Analyzer**: Automatic project structure detection, dependency analysis, and code insight
+- **LSP Integration**: Language Server Protocol support for real-time code intelligence
+- **Thinking Protocol**: Advanced reasoning with analysis, planning, verification, and self-improvement
+- **Session Management**: Persistent multi-session tracking with tool usage and file change history
+- **Authentication & Authorization**: API-key auth for web endpoints with role-based access control
+- **Response Safety**: Content filtering and safety checks on AI responses
+- **Response Cache**: Smart caching of AI responses for reduced latency
 - **Cybersecurity Console**: Standalone pentest toolkit with 30+ tools
+- **Vision Engine**: Image analysis and OCR capabilities
+- **Web Artifacts**: Generate and serve interactive web content
+- **Web Testing**: Automated web testing and validation tools
+- **Office Tools**: Document generation and manipulation
+- **GIF Builder**: Create animated GIFs programmatically
+- **MCP Builder**: Model Context Protocol server builder
+- **Algorithm Generator**: Generate and optimize algorithms with AI
 
 ### Cybersecurity Console
 
@@ -100,9 +116,16 @@ For Ollama local mode, set `"provider": "ollama"` in `config.json`:
 
 ```
 jarvis/
-├── core/              # Assistant, Brain (Groq/Ollama), Speech, SSRF, Ratelimit, Plugins, Multi-agent
-├── tools/             # System, Shell, Code Interpreter, File Editor, Languages, Git, Security,
-│                      # Internet, Scraper, Automator, Web, Files, Planner, News, Stocks, Report
+├── core/              # Assistant, Brain (Groq/Ollama), Speech, SSRF, Ratelimit,
+│                      # Plugins, Multi-agent, Auth, Authorizer, Guardian, Session Manager,
+│                      # Project Analyzer, LSP Integration, Thinking Protocol, Agent Swarm,
+│                      # Human Understanding, Response Safety, Security Audit
+├── tools/             # 25+ modules: System, Shell, Code Interpreter, File Editor,
+│                      # Languages, Git, Security, Internet, Scraper, Automator, Web,
+│                      # Files, Planner, News, Stocks, Report, Vision, Office,
+│                      # GIF Builder, MCP Builder, Web Artifacts, Web Testing,
+│                      # Algorithm Generator
+├── agent/             # Deep Research, Task Orchestrator
 ├── web/               # FastAPI dashboard (+ cyber web UI with static assets)
 ├── memory/            # Vector store, code indexer, conversation history
 ├── plugins/           # Python hot-load plugins
