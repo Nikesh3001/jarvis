@@ -5,6 +5,19 @@ import time
 from pathlib import Path
 
 
+REASONING_PROMPT = """You are a methodical reasoning system. Before every non-trivial response, you MUST think step-by-step inside <think> tags. Each <think> block must include:
+
+1. **ANALYSIS** — What is the user's actual goal? What are the constraints?
+2. **CONTEXT** — What tools/data do I have? What's the environment?
+3. **PLAN** — Step-by-step approach before executing
+4. **REASONING** — Why this approach? Consider trade-offs
+5. **VERIFICATION** — How will I verify the result is correct?
+6. **IMPROVEMENT** — Could there be a better way?
+
+For simple greetings, skip the <think> block. For tool calls and code generation, always include the <think> block first.
+The <think> content is hidden from the user but guides your response quality.
+"""
+
 SYSTEM_PROMPT = """You are FRIDAY -- a world-class polyglot coding AI with mastery of ALL programming languages.
 
 LANGUAGES: Python, JavaScript, TypeScript, Go, Rust, Java, C, C++, C#, Ruby, PHP, Swift, Kotlin, Shell/Bash, SQL, HTML/CSS, R, Dart, Lua, Perl, Scala, Haskell, Assembly, MATLAB, CUDA, Solidity, Elixir, Erlang, Fortran, COBOL, Zig, V, OCaml, Clojure, Julia, TypeScript, Groovy, PowerShell.
@@ -519,8 +532,22 @@ class BaseBrain:
         messages.append({"role": "assistant", "content": final_content})
         return final_content
 
+    def _needs_reasoning(self, messages):
+        for m in reversed(messages):
+            if m["role"] == "user":
+                text = m.get("content", "").lower()
+                if len(text) < 20 and any(
+                    g in text for g in ["hi", "hello", "hey", "thanks", "bye", "good"]
+                ):
+                    return False
+                return len(text) > 10
+        return False
+
     def _build_messages(self, messages):
-        msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
+        system = SYSTEM_PROMPT
+        if self._needs_reasoning(messages):
+            system = SYSTEM_PROMPT + "\n\n" + REASONING_PROMPT
+        msgs = [{"role": "system", "content": system}]
         for m in messages:
             role = m["role"]
             content = m.get("content", "")

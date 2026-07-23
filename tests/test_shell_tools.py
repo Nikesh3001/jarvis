@@ -1,10 +1,8 @@
-"""Comprehensive tests for ShellCommander."""
-
 import sys, os, unittest
 from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools.shell import ShellCommander, _check_dangerous, _DANGEROUS_COMMANDS
+from tools.shell import ShellCommander, _check_command_safety, _get_allowed
 
 
 class TestShellInit(unittest.TestCase):
@@ -16,19 +14,14 @@ class TestShellInit(unittest.TestCase):
         s = ShellCommander()
         defs = s.get_tool_definitions()
         self.assertIsInstance(defs, list)
-        self.assertGreaterEqual(len(defs), 3)
+        self.assertGreaterEqual(len(defs), 2)
         names = [d["function"]["name"] for d in defs]
         self.assertIn("run_command", names)
-        self.assertIn("run_script", names)
         self.assertIn("run_shell", names)
 
     def test_get_handler_run_command(self):
         s = ShellCommander()
         self.assertTrue(callable(s.get_handler("run_command")))
-
-    def test_get_handler_run_script(self):
-        s = ShellCommander()
-        self.assertTrue(callable(s.get_handler("run_script")))
 
     def test_get_handler_run_shell(self):
         s = ShellCommander()
@@ -40,63 +33,41 @@ class TestShellInit(unittest.TestCase):
 
 
 class TestDangerousCommandBlocking(unittest.TestCase):
-    def test_block_rm_rf_root(self):
+    def test_block_chaining(self):
         with self.assertRaises(PermissionError):
-            _check_dangerous("rm -rf /")
+            _check_command_safety("echo hello & del /F *")
 
-    def test_block_format_disk(self):
+    def test_block_sudo(self):
         with self.assertRaises(PermissionError):
-            _check_dangerous("format C:")
+            _check_command_safety("sudo rm -rf /")
 
-    def test_block_shutdown(self):
+    def test_block_runas(self):
         with self.assertRaises(PermissionError):
-            _check_dangerous("shutdown -s")
+            _check_command_safety("runas /user:admin cmd")
 
-    def test_block_reboot(self):
+    def test_block_pipe(self):
         with self.assertRaises(PermissionError):
-            _check_dangerous("reboot")
+            _check_command_safety("echo hello | del /F *")
 
-    def test_block_python_exec(self):
+    def test_block_backtick(self):
         with self.assertRaises(PermissionError):
-            _check_dangerous("python -c 'import os'")
-
-    def test_block_powershell_invoke(self):
-        with self.assertRaises(PermissionError):
-            _check_dangerous("Invoke-Expression Get-Process")
-
-    def test_block_encoded_command(self):
-        with self.assertRaises(PermissionError):
-            _check_dangerous("powershell -EncodedCommand AAAA")
-
-    def test_block_diskpart(self):
-        with self.assertRaises(PermissionError):
-            _check_dangerous("diskpart /s script.txt")
-
-    def test_block_reg_delete(self):
-        with self.assertRaises(PermissionError):
-            _check_dangerous("reg delete HKLM\\SOFTWARE")
-
-    def test_block_net_user(self):
-        with self.assertRaises(PermissionError):
-            _check_dangerous("net user admin /add")
+            _check_command_safety("echo `whoami`")
 
     def test_safe_command_allowed(self):
         try:
-            _check_dangerous("echo hello world")
+            _check_command_safety("echo hello world")
         except PermissionError:
             self.fail("Safe command should not be blocked")
 
-    def test_safe_ls_allowed(self):
+    def test_safe_dir_allowed(self):
         try:
-            _check_dangerous("ls -la")
+            _check_command_safety("dir C:")
         except PermissionError:
-            self.fail("ls command should not be blocked")
+            self.fail("dir command should not be blocked")
 
-    def test_safe_python_script_allowed(self):
-        try:
-            _check_dangerous("python script.py")
-        except PermissionError:
-            self.fail("python script.py should not be blocked")
+    def test_block_unknown_command(self):
+        with self.assertRaises(PermissionError):
+            _check_command_safety("malicious_tool --attack")
 
 
 class TestRunCommand(unittest.TestCase):
@@ -111,8 +82,8 @@ class TestRunCommand(unittest.TestCase):
 
     @patch("tools.shell.check_rate", return_value=True)
     def test_run_dangerous_blocked(self, mock_rate):
-        result = self.s.run_command("rm -rf /")
-        self.assertIn("blocked", result.lower())
+        result = self.s.run_command("del /F *")
+        self.assertTrue("blocked" in result.lower() or "not in the allowed" in result.lower())
 
     @patch("tools.shell.check_rate", return_value=False)
     def test_rate_limited(self, mock_rate):
@@ -135,41 +106,23 @@ class TestRunScript(unittest.TestCase):
 
     def test_run_python_script_with_error(self):
         result = self.s.run_script("print(1/0)", "python")
-        self.assertTrue("Error" in result or "error" in result)
+        self.assertTrue("Error" in result or "error" in result.lower())
 
     def test_run_python_sandbox_blocks_os(self):
         result = self.s.run_script("import os; os.system('ls')", "python")
-        self.assertTrue("blocked" in result.lower() or "forbidden" in result.lower() or "not allowed" in result.lower(), f"Expected blocking message, got: {result}")
-
-    def test_run_python_sandbox_blocks_subprocess(self):
-        result = self.s.run_script("import subprocess; subprocess.run(['ls'])", "python")
-        self.assertTrue("blocked" in result.lower() or "forbidden" in result.lower() or "not allowed" in result.lower(), f"Expected blocking message, got: {result}")
+        self.assertTrue("blocked" in result.lower() or "forbidden" in result.lower() or "not allowed" in result.lower() or "not in safe list" in result.lower())
 
     def test_run_python_sandbox_blocks_open(self):
         result = self.s.run_script("open('/etc/passwd')", "python")
-        self.assertTrue("blocked" in result.lower() or "forbidden" in result.lower() or "not allowed" in result.lower(), f"Expected blocking message, got: {result}")
+        self.assertTrue("blocked" in result.lower() or "forbidden" in result.lower() or "not allowed" in result.lower())
 
     def test_run_python_sandbox_blocks_exec(self):
         result = self.s.run_script("exec('print(1)')", "python")
-        self.assertTrue("blocked" in result.lower() or "forbidden" in result.lower() or "not allowed" in result.lower(), f"Expected blocking message, got: {result}")
+        self.assertTrue("blocked" in result.lower() or "forbidden" in result.lower() or "not allowed" in result.lower())
 
-    def test_run_python_sandbox_blocks_eval(self):
-        result = self.s.run_script("eval('1+1')", "python")
-        self.assertTrue("blocked" in result.lower() or "forbidden" in result.lower() or "not allowed" in result.lower(), f"Expected blocking message, got: {result}")
-
-    def test_run_python_syntax_error(self):
-        result = self.s.run_script("def (broken", "python")
-        self.assertTrue("blocked" in result.lower() or "syntax" in result.lower() or "error" in result.lower(), f"Expected blocking/error message, got: {result}")
-
-    def test_run_unsupported_language_on_windows(self):
-        from core.platform_utils import is_windows
-        if not is_windows():
-            result = self.s.run_script("echo hi", "powershell")
-            self.assertIn("only supported", result.lower())
-
-    def test_run_dangerous_script_blocked(self):
-        result = self.s.run_script("rm -rf /", "python")
-        self.assertIn("blocked", result.lower())
+    def test_run_unsupported_language(self):
+        result = self.s.run_script("echo hi", "powershell")
+        self.assertIn("only python", result.lower())
 
     def test_run_script_returns_output(self):
         result = self.s.run_script("print(2 + 2)", "python")

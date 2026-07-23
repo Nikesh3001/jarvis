@@ -196,43 +196,21 @@ def _get_apikey(service):
 
 
 def _store_apikey(service, key):
-    """Store API key in credential manager."""
+    """Store API key in OS keychain only."""
     env_var = service
     username = os.environ.get("USERNAME", os.environ.get("USER", "default"))
 
     if _store_credential(_CREDENTIAL_TARGET, env_var, key):
         print(f"  [OK] {env_var} stored in OS keychain")
 
-        # Also update config.json as fallback
         config = _load_config()
         provider = PROVIDER_MAP.get(env_var)
-        if provider:
-            if "providers" not in config:
-                config["providers"] = {}
-            if provider not in config["providers"]:
-                config["providers"][provider] = {}
-            config["providers"][provider]["api_key"] = key
-        else:
-            config["api_key"] = key
-        try:
+        if provider and "providers" in config and provider in config["providers"]:
+            config["providers"][provider].pop("api_key", None)
             _save_config(config)
-            print(f"  [OK] {env_var} also stored in config.json (restricted permissions)")
-        except Exception as e:
-            print(f"  [WARN] Could not save to config.json: {e}")
     else:
-        print(f"  [WARN] Could not store in OS keychain, falling back to config.json")
-        config = _load_config()
-        provider = PROVIDER_MAP.get(env_var)
-        if provider:
-            if "providers" not in config:
-                config["providers"] = {}
-            if provider not in config["providers"]:
-                config["providers"][provider] = {}
-            config["providers"][provider]["api_key"] = key
-        else:
-            config["api_key"] = key
-        _save_config(config)
-        print(f"  [OK] {env_var} stored in config.json (restricted permissions)")
+        print(f"  [WARN] Could not store in OS keychain.")
+        print(f"  [HINT] Set environment variable: set {env_var}=your_key")
 
 
 def main():

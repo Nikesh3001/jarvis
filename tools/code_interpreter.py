@@ -3,9 +3,8 @@ import sys
 import subprocess
 import tempfile
 import ast
-import io
-import contextlib
-import threading
+import json
+import re
 
 
 FORBIDDEN_MODULES = {
@@ -18,16 +17,11 @@ FORBIDDEN_MODULES = {
     "_io", "codecs",
 }
 
-FORBIDDEN_STRINGS = [
+FORBIDDEN_AST_PATTERNS = [
     "__import__", "__builtins__", "__subclasses__",
     "__class__", "__bases__", "__mro__", "__base__",
     "__globals__", "__code__", "__closure__", "__func__",
-    "open(", "exec(", "eval(", "compile(",
-    "getattr(", "setattr(", "delattr(",
-    "os.", "subprocess.", "shutil.", "socket.", "ctypes.",
-    "pathlib.", "glob.",
-    "globals(", "locals(",
-    "vars(",
+    "__getattribute__", "__getattr__", "__setattr__",
 ]
 
 DANGEROUS_NAMES = {
@@ -36,6 +30,18 @@ DANGEROUS_NAMES = {
     "getattr", "setattr", "delattr",
     "globals", "locals", "vars",
 }
+
+SAFE_MODULES = [
+    "math", "cmath", "decimal", "fractions", "random", "statistics",
+    "json", "base64", "binascii", "struct",
+    "itertools", "functools", "operator", "collections", "heapq", "bisect",
+    "re", "string", "textwrap", "difflib", "unicodedata",
+    "datetime", "time", "calendar",
+    "typing", "enum", "dataclasses", "abc",
+    "copy", "pprint", "reprlib",
+    "array", "queue",
+    "hashlib", "uuid", "secrets",
+]
 
 
 class SandboxError(Exception):
@@ -72,9 +78,16 @@ def _check_code_safety(code):
                         cur = cur.value
                     if isinstance(cur, ast.Name) and cur.id == "type":
                         raise SandboxError("Meta-programming patterns are blocked")
-        elif isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name) and node.value.id in ("os", "subprocess", "shutil", "socket", "ctypes"):
-                raise SandboxError(f"Access to '{node.value.id}.{node.attr}' is not allowed")
+                    if isinstance(cur, ast.Attribute) and any(p in chain for p in FORBIDDEN_AST_PATTERNS):
+                        raise SandboxError("Meta-programming patterns are blocked")
+
+    for forbidden in FORBIDDEN_AST_PATTERNS:
+        pattern = re.compile(
+            r'\(\s*\)\s*\.\s*(?:__getattribute__|__getattr__)\s*\('
+            r'|\b' + re.escape(forbidden) + r'\b'
+        )
+        if pattern.search(code):
+            raise SandboxError(f"Code contains forbidden pattern")
 
     return tree
 
@@ -90,99 +103,47 @@ class CodeInterpreter:
             return "Code too long (max 10000 chars)."
 
         try:
-            tree = _check_code_safety(code)
+            _check_code_safety(code)
         except SandboxError as e:
             return f"Sandbox blocked: {e}"
 
-        safe_modules = {
-            "math", "cmath", "decimal", "fractions", "random", "statistics",
-            "json", "base64", "binascii", "struct",
-            "itertools", "functools", "operator", "collections", "heapq", "bisect",
-            "re", "string", "textwrap", "difflib", "unicodedata",
-            "datetime", "time", "calendar",
-            "typing", "enum", "dataclasses", "abc",
-            "copy", "pprint", "reprlib",
-            "array", "queue",
-            "hashlib", "uuid", "secrets",
-            "statistics",
-        }
-
-        def safe_import(name, *args, **kwargs):
-            return _import_fallback(name, *args, **kwargs)
-
-        def _import_fallback(name, *args, **kwargs):
-            base = name.split(".")[0]
-            if base in FORBIDDEN_MODULES:
-                raise SandboxError(f"Module '{name}' is not allowed in sandbox")
-            if base not in safe_modules:
-                raise SandboxError(f"Module '{name}' is not in the allowed safe list")
-            if base == "builtins":
-                raise SandboxError(f"Module '{name}' is not allowed in sandbox")
-            return __import__(name, *args, **kwargs)
-
-        safe_builtins = {
-            "abs": abs, "all": all, "any": any, "ascii": ascii,
-            "bin": bin, "bool": bool, "bytearray": bytearray, "bytes": bytes,
-            "callable": callable, "chr": chr, "complex": complex,
-            "dict": dict, "divmod": divmod,
-            "enumerate": enumerate,
-            "filter": filter, "float": float, "format": format, "frozenset": frozenset,
-            "hash": hash, "hex": hex,
-            "id": id, "int": int, "isinstance": isinstance,
-            "iter": iter,
-            "len": len, "list": list, "map": map,
-            "max": max, "min": min,
-            "next": next, "object": object, "oct": oct, "ord": ord,
-            "pow": pow, "print": print, "property": property,
-            "range": range, "repr": repr, "reversed": reversed, "round": round,
-            "set": set, "slice": slice, "sorted": sorted, "str": str, "sum": sum,
-            "tuple": tuple, "type": type,
-            "zip": zip,
-            "True": True, "False": False, "None": None,
-        }
-
-        restricted_globals = {
-            "__builtins__": safe_builtins,
-        }
-
-        stdout_capture = io.StringIO()
-        stderr_capture = io.StringIO()
-        result = []
-        exception_info = [None]
-
-        def run_in_thread():
-            try:
-                compiled = compile(tree, "<sandbox>", "exec")
-                with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
-                    exec(compiled, restricted_globals, {})
-            except SandboxError as e:
-                exception_info[0] = f"Sandbox blocked at runtime: {e}"
-            except Exception as e:
-                exception_info[0] = f"Code error: {type(e).__name__}: {e}"
-
-        t = threading.Thread(target=run_in_thread, daemon=True)
-        t.start()
-        t.join(timeout=self.timeout)
-
-        if t.is_alive():
+        wrapper = rf"""import sys, json, builtins as _b
+SAFE = {json.dumps(sorted(SAFE_MODULES))}
+_orig = _b.__import__
+def _safe_import(name, *a, **kw):
+    base = name.split('.')[0]
+    if base == 'builtins':
+        raise ImportError("module 'builtins' not allowed")
+    if base not in SAFE:
+        raise ImportError(f"module '{{name}}' not in safe list")
+    return _orig(name, *a, **kw)
+_b.__import__ = _safe_import
+_b.type = None
+_b.open = None
+exec({json.dumps(code)})
+"""
+        try:
+            r = subprocess.run(
+                [sys.executable, "-I", "-c", wrapper],
+                capture_output=True, text=True, timeout=self.timeout,
+                env={**os.environ, "PYTHONPATH": ""}
+            )
+            out = []
+            if r.stdout.strip():
+                out.append(f"Output:\n{r.stdout.strip()[:5000]}")
+            if r.stderr.strip():
+                stderr = r.stderr.strip()[:2000]
+                if "Error:" in stderr or "Exception" in stderr:
+                    out.append(f"Error:\n{stderr}")
+            return "\n".join(out) if out else "Code executed (no output)."
+        except subprocess.TimeoutExpired:
             return f"Code execution timed out after {self.timeout}s"
-
-        if exception_info[0]:
-            return exception_info[0]
-
-        stdout_text = stdout_capture.getvalue().strip()
-        stderr_text = stderr_capture.getvalue().strip()
-        if stdout_text:
-            result.append(f"Output:\n{stdout_text[:5000]}")
-        if stderr_text:
-            result.append(f"Stderr:\n{stderr_text[:2000]}")
-        if not result:
-            result.append("Code executed (no output).")
-        return "\n".join(result)
+        except Exception as e:
+            return f"Execution failed: {type(e).__name__}: {e}"
 
     def get_tool_definitions(self):
         return [
-            {"type": "function", "function": {"name": "run_code", "description": "Sandboxed Python exec (no os/subprocess/socket/file I/O)", "parameters": {"type": "object", "properties": {"code": {"type": "string", "description": "Code"}}, "required": ["code"]}}},
+            {"type": "function", "function": {"name": "run_code", "description": "Sandboxed Python exec (safe modules only, no os/subprocess/socket/file I/O)", "parameters": {"type": "object", "properties": {"code": {"type": "string", "description": "Python code to execute"}}, "required": ["code"]}}},
         ]
 
     def get_handler(self, name):
