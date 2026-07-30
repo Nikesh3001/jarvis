@@ -332,18 +332,12 @@ class LanguageTools:
             return f"Blocked: {e}"
         cmd = linter["cmd"].replace("{file}", str(path))
         try:
-            if is_windows():
-                r = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, timeout=30,
-                    cwd=str(path.parent)
-                )
-            else:
-                import shlex as _shlex
-                cmd_parts = _shlex.split(cmd)
-                r = subprocess.run(
-                    cmd_parts, shell=False, capture_output=True, text=True, timeout=30,
-                    cwd=str(path.parent)
-                )
+            import shlex as _shlex
+            cmd_parts = _shlex.split(cmd)
+            r = subprocess.run(
+                cmd_parts, shell=False, capture_output=True, text=True, timeout=30,
+                cwd=str(path.parent)
+            )
             out = []
             if r.stdout.strip():
                 out.append(f"Output:\n{r.stdout.strip()[:3000]}")
@@ -381,18 +375,12 @@ class LanguageTools:
             return f"Blocked: {e}"
         cmd = formatter["cmd"].replace("{file}", str(path))
         try:
-            if is_windows():
-                r = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, timeout=30,
-                    cwd=str(path.parent)
-                )
-            else:
-                import shlex as _shlex
-                cmd_parts = _shlex.split(cmd)
-                r = subprocess.run(
-                    cmd_parts, shell=False, capture_output=True, text=True, timeout=30,
-                    cwd=str(path.parent)
-                )
+            import shlex as _shlex
+            cmd_parts = _shlex.split(cmd)
+            r = subprocess.run(
+                cmd_parts, shell=False, capture_output=True, text=True, timeout=30,
+                cwd=str(path.parent)
+            )
             out = []
             if r.stdout.strip():
                 out.append(r.stdout.strip()[:2000])
@@ -446,16 +434,11 @@ class LanguageTools:
         cmd = pm["install"].replace("{pkg}", package)
         cwd = str(path) if path else None
         try:
-            if is_windows():
-                r = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, timeout=120, cwd=cwd
-                )
-            else:
-                import shlex as _shlex
-                cmd_parts = _shlex.split(cmd)
-                r = subprocess.run(
-                    cmd_parts, shell=False, capture_output=True, text=True, timeout=120, cwd=cwd
-                )
+            import shlex as _shlex
+            cmd_parts = _shlex.split(cmd)
+            r = subprocess.run(
+                cmd_parts, shell=False, capture_output=True, text=True, timeout=120, cwd=cwd
+            )
             out = []
             if r.stdout.strip():
                 out.append(r.stdout.strip()[:3000])

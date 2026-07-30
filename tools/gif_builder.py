@@ -54,7 +54,7 @@ class GIFBuilder:
     def _write_header(self, f, palette):
         f.write(b"GIF89a")
         f.write(struct.pack("<HH", self.width, self.height))
-        packed = 0xF0 | (len(palette) - 1).bit_length() - 1 if len(palette) > 2 else 0x70
+        packed = (0xF0 | max(0, (len(palette) - 1).bit_length() - 1)) if len(palette) > 2 else 0x70
         f.write(struct.pack("B", packed))
         f.write(b"\x00\x00")
         for color in palette:
@@ -75,7 +75,7 @@ class GIFBuilder:
         left, top = 0, 0
         f.write(b"\x2C")
         f.write(struct.pack("<HHHH", left, top, self.width, self.height))
-        packed = 0x80 | ((len(palette) - 1).bit_length() - 1) if len(palette) > 2 else 0x00
+        packed = (0x80 | max(0, (len(palette) - 1).bit_length() - 1)) if len(palette) > 2 else 0x00
         f.write(struct.pack("B", packed))
 
         raw = bytearray()
@@ -94,7 +94,7 @@ class GIFBuilder:
 
         from io import BytesIO
         buf = BytesIO()
-        code_size = max(2, (len(palette) - 1).bit_length())
+        code_size = max(2, (len(palette) - 1).bit_length() or 1)
         self._lzw_encode(raw, buf, code_size)
         compressed = buf.getvalue()
 

@@ -1,8 +1,11 @@
 import os
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 
 from core.ratelimit import check_rate
+from core.ssrf import is_ssrf_blocked
+import core.guardian as guardian
 
 
 class WebTestingTools:
@@ -21,6 +24,14 @@ class WebTestingTools:
             return "Rate limited"
         if not self._has_playwright():
             return "Playwright not installed. Install with: pip install playwright && playwright install chromium"
+        parsed = urlparse(url)
+        if parsed.scheme == "file":
+            return "file:// URLs are not allowed in browser tests"
+        host = parsed.hostname or parsed.netloc
+        if host:
+            blocked = is_ssrf_blocked(host)
+            if blocked:
+                return f"URL blocked by SSRF guard: {blocked}"
         try:
             from playwright.sync_api import sync_playwright
             results = []

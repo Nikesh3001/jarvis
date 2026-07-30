@@ -84,7 +84,8 @@ def _load_env():
                         print(f"  [SECURITY] .env contains API keys in plaintext!")
                         print(f"  [SECURITY] Consider using setup_keys.py for production.")
                     has_sensitive = True
-                os.environ.setdefault(key, v.strip().strip("\"'"))
+                if key not in os.environ:
+                    os.environ[key] = v.strip().strip("\"'")
 
 
 def _sanitize_error(error_msg):
@@ -640,7 +641,7 @@ class GroqBrain(BaseBrain):
 
     def __init__(self, config=None):
         _load_env()
-        self._or_key = os.environ.get("OPENROUTER_API_KEY") or ""
+        self._or_key = os.environ.pop("OPENROUTER_API_KEY", None) or ""
         super().__init__(config)
         self._api_keys = []
         if not self._or_key:
@@ -648,7 +649,7 @@ class GroqBrain(BaseBrain):
             if primary:
                 self._api_keys.append(primary)
             for i in range(2, 10):
-                k = os.environ.get(f"GROQ_API_KEY_{i}")
+                k = os.environ.pop(f"GROQ_API_KEY_{i}", None)
                 if k:
                     self._api_keys.append(k)
             if not self._api_keys:
@@ -732,10 +733,10 @@ class GroqBrain(BaseBrain):
             ]
         return result
 
-    def chat(self, messages, tools_enabled=True):
+    def chat(self, messages, tools_enabled=True, _depth=0):
+        _load_env()
         msgs = self._build_messages(messages)
         kwargs = self._build_kwargs(self.current_model, msgs, tools_enabled, messages)
-
         try:
             response = self.client.chat.completions.create(**kwargs, timeout=30)
             result = self._parse_response(response)
@@ -751,10 +752,10 @@ class GroqBrain(BaseBrain):
             _rate_limit_keywords = ["429", "rate limit", "rate_limit", "quota",
                                     "exceeded", "token limit", "too many requests"]
             if any(kw in err_str.lower() for kw in _rate_limit_keywords):
-                if self._api_keys and len(self._api_keys) > 1 and not self._or_key:
+                if self._api_keys and len(self._api_keys) > 1 and not self._or_key and _depth < 5:
                     self._rotate_key()
                     try:
-                        return self.chat(messages, tools_enabled)
+                        return self.chat(messages, tools_enabled, _depth=_depth + 1)
                     except Exception:
                         pass
                 if not self._retrying_rate_limit and self.current_model != self.fast_model:

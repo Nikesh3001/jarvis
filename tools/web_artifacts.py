@@ -1,4 +1,5 @@
 import os
+import html as _html
 from pathlib import Path
 from core.ratelimit import check_rate
 
@@ -21,7 +22,7 @@ class WebArtifactBuilder:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{name}</title>
+<title>{_html.escape(name)}</title>
 <style>
 {css_content or "body { margin: 0; font-family: system-ui, sans-serif; background: #fff; color: #222; }"}
 </style>
@@ -44,7 +45,7 @@ class WebArtifactBuilder:
 
         sections_html = ""
         for i, comp in enumerate(comps):
-            comp_name = comp.get("name", f"section-{i}")
+            comp_name = _html.escape(comp.get("name", f"section-{i}"))
             comp_type = comp.get("type", "html")
             comp_content = comp.get("content", "")
             if comp_type == "chart":
@@ -52,16 +53,17 @@ class WebArtifactBuilder:
             elif comp_type == "form":
                 sections_html += f'<div class="section" id="{comp_name}"><form id="form-{i}">{comp_content}</form><div id="output-{i}"></div></div>\n'
             elif comp_type == "data":
-                sections_html += f'<div class="section" id="{comp_name}"><pre id="data-{i}">{comp_content}</pre></div>\n'
+                sections_html += f'<div class="section" id="{comp_name}"><pre id="data-{i}">{_html.escape(comp_content)}</pre></div>\n'
             else:
                 sections_html += f'<div class="section" id="{comp_name}">{comp_content}</div>\n'
 
+        safe_title = _html.escape(title)
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title}</title>
+<title>{safe_title}</title>
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{ font-family: system-ui, sans-serif; background: #f5f5f5; color: #222; padding: 20px; }}
@@ -80,7 +82,7 @@ button:hover {{ background: #1d4ed8; }}
 </head>
 <body>
 <div class="container">
-<h1>{title}</h1>
+<h1>{safe_title}</h1>
 <div class="{layout}">
 {sections_html}
 </div>
@@ -111,14 +113,14 @@ document.querySelectorAll('form').forEach(form => {{
         cards = ""
         for w in widgets:
             w_type = w.get("type", "value")
-            w_title = w.get("title", "")
+            w_title = _html.escape(w.get("title", ""))
             w_data = w.get("data", "")
-            w_color = w.get("color", "#2563eb")
+            w_color = _html.escape(w.get("color", "#2563eb"))
             if w_type == "value":
                 cards += f"""
                 <div class="card">
                     <div class="card-title">{w_title}</div>
-                    <div class="card-value" style="color:{w_color}">{w_data}</div>
+                    <div class="card-value" style="color:{w_color}">{_html.escape(str(w_data))}</div>
                 </div>"""
             elif w_type == "chart":
                 cards += f"""
@@ -128,7 +130,7 @@ document.querySelectorAll('form').forEach(form => {{
                 </div>"""
             elif w_type == "list":
                 items = w_data if isinstance(w_data, list) else [w_data]
-                list_html = "".join(f"<li>{i}</li>" for i in items)
+                list_html = "".join(f"<li>{_html.escape(str(i))}</li>" for i in items)
                 cards += f"""
                 <div class="card">
                     <div class="card-title">{w_title}</div>
@@ -138,17 +140,18 @@ document.querySelectorAll('form').forEach(form => {{
                 cards += f"""
                 <div class="card">
                     <div class="card-title">{w_title}</div>
-                    <div>{w_data}</div>
+                    <div>{_html.escape(str(w_data))}</div>
                 </div>"""
 
         auto_refresh = f"setInterval(function(){{ location.reload(); }}, {refresh_interval * 1000});" if refresh_interval > 0 else ""
 
+        safe_title = _html.escape(title)
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title}</title>
+<title>{safe_title}</title>
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{ font-family: system-ui, sans-serif; background: #f0f2f5; padding: 20px; color: #333; }}
@@ -164,7 +167,7 @@ canvas {{ width: 100% !important; max-height: 300px; }}
 </style>
 </head>
 <body>
-<h1>{title}</h1>
+<h1>{safe_title}</h1>
 <div class="dashboard">{cards}</div>
 <script>
 {auto_refresh}

@@ -129,7 +129,7 @@ def open_file(path):
 def launch_app(name):
     if is_windows():
         r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", f"Start-Process '{name}'"],
+            ["powershell", "-NoProfile", "-Command", "Start-Process", "-FilePath", name],
             capture_output=True, text=True, timeout=15
         )
         return r.returncode == 0
@@ -413,7 +413,8 @@ def focus_window(title):
         pass
     if is_windows():
         ps_code = (
-            f'$t="*{title}*"; '
+            'param($title)\n'
+            f'$t="*$title*"; '
             f'$h=Get-Process | Where-Object {{ $_.MainWindowTitle -like $t }} | '
             f'Select-Object -First 1 | ForEach-Object {{ $_.MainWindowHandle }}; '
             f'if ($h -and $h -ne 0) {{ '
@@ -421,7 +422,7 @@ def focus_window(title):
             f'public class W {{ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); }}'
             f'\'@; [W]::SetForegroundWindow($h) }}'
         )
-        subprocess.run(["powershell", "-NoProfile", "-Command", ps_code],
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps_code, title],
                        capture_output=True, text=True, timeout=10)
     elif is_macos():
         safe_title = title.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', '\\n')
@@ -556,7 +557,7 @@ def find_installed_app(search):
     results = []
     if is_windows():
         ps_script = (
-            f'$search = "{search}"\n'
+            'param($search)\n'
             f'$results = @()\n'
             f'$results += Get-StartApps | Where-Object {{ $_.Name -like "*$search*" }} | '
             f'Select-Object Name, AppId\n'
@@ -566,7 +567,7 @@ def find_installed_app(search):
             f'@{{n="AppId";e="{{$($_.InstallLocation)"}}}}\n'
             f'$results | ConvertTo-Json'
         )
-        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script],
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script, search],
                            capture_output=True, text=True, timeout=15)
         if r.stdout.strip():
             try:
@@ -679,10 +680,9 @@ def get_tts_engine():
 def speak_text(text, engine=None):
     engine = engine or get_tts_engine()
     if engine == "sapi":
-        escaped = text.replace("'", "''")
         subprocess.run(
             ["powershell", "-NoProfile", "-Command",
-             f"Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak('{escaped}')"],
+             "Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak($args[0])", text],
             capture_output=True, timeout=30
         )
     elif engine == "say":

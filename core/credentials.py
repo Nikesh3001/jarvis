@@ -53,9 +53,14 @@ class CredentialVault:
                 pass
         return "|".join(parts)
 
-    def _derive_machine_key(self) -> bytes:
+    def _derive_machine_key(self, salt: bytes = None) -> bytes:
         machine_id = self._get_machine_id()
-        return hashlib.sha256(machine_id.encode()).digest()
+        if salt is None:
+            salt = self._vault_path.read_bytes()[:16] if self._vault_path.exists() else b""
+        if len(salt) < 16:
+            import secrets
+            salt = secrets.token_bytes(16)
+        return hashlib.pbkdf2_hmac("sha256", machine_id.encode(), salt, 100000, dklen=32)
 
     def _encrypt(self, plaintext: str) -> str:
         from cryptography.fernet import Fernet

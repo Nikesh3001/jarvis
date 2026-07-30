@@ -11,7 +11,7 @@ from tools.code_interpreter import SandboxError
 
 
 BLOCKED_CHAINING = re.compile(r'[;&|`]|\$\(|\$\{|\|\|')
-BLOCKED_REDIRECT = re.compile(r'(?:^|[^a-zA-Z])[<>]{1,2}\s*(?:[\\/]|[a-zA-Z]:\\)')
+BLOCKED_REDIRECT = re.compile(r'(?:^|[^a-zA-Z])[<>]{1,2}(?!\s*$)\s*')
 
 SAFE_COMMANDS_WINDOWS = {
     "echo", "dir", "type", "more", "find", "findstr", "where",

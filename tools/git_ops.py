@@ -75,6 +75,10 @@ class GitOps:
             return str(e)
         args = ["clone", url]
         if directory:
+            if directory.startswith("-"):
+                return "Invalid directory name (starts with '-')"
+            if any(c in directory for c in ";&|`$!{}[]"):
+                return "Invalid directory name"
             args.append(directory)
         return self._run(*args)
 

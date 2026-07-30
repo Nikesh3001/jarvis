@@ -42,6 +42,10 @@ class Automator:
                 parts = target.split(None, 1)
                 url = parts[1] if len(parts) > 1 else None
                 if url:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url)
+                    if parsed.scheme and parsed.scheme not in ('http', 'https'):
+                        return "Launch failed: invalid URL scheme"
                     if not url.startswith(("http://", "https://")):
                         url = "https://" + url
                     if self._open_with_chrome(url):

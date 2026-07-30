@@ -1,4 +1,4 @@
-import os, sys, time, datetime, json, threading, random, base64, hashlib, shutil, re
+import os, sys, time, datetime, json, threading, random, base64, hashlib, shutil, re, secrets
 from pathlib import Path
 
 from core.speech import SpeechEngine, STARK_QUOTES
@@ -12,23 +12,21 @@ def _get_encryption_key():
     global _ENCRYPTION_KEY
     if _ENCRYPTION_KEY is not None:
         return _ENCRYPTION_KEY
-    key_file = Path(__file__).parent.parent / ".conversation_key"
-    if key_file.exists():
-        try:
-            _ENCRYPTION_KEY = base64.b64decode(key_file.read_text().strip())
+    try:
+        from core.credentials import CredentialVault
+        vault = CredentialVault()
+        key_b64 = vault.get("conversation_key")
+        if key_b64:
+            _ENCRYPTION_KEY = base64.b64decode(key_b64)
             return _ENCRYPTION_KEY
-        except Exception:
-            pass
+    except Exception:
+        pass
     key = os.urandom(32)
     _ENCRYPTION_KEY = key
     try:
-        key_file.write_text(base64.b64encode(key).decode("ascii"))
-        # Restrict file permissions to owner-only
-        try:
-            import stat
-            key_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # owner read/write only
-        except (OSError, AttributeError):
-            pass
+        from core.credentials import CredentialVault
+        vault = CredentialVault()
+        vault.set("conversation_key", base64.b64encode(key).decode("ascii"))
     except Exception:
         pass
     return key

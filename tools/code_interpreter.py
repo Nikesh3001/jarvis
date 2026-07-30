@@ -22,6 +22,8 @@ FORBIDDEN_AST_PATTERNS = [
     "__class__", "__bases__", "__mro__", "__base__",
     "__globals__", "__code__", "__closure__", "__func__",
     "__getattribute__", "__getattr__", "__setattr__",
+    "__reduce__", "__reduce_ex__", "__init__",
+    "__format__", "__hash__",
 ]
 
 DANGEROUS_NAMES = {
@@ -107,21 +109,33 @@ class CodeInterpreter:
         except SandboxError as e:
             return f"Sandbox blocked: {e}"
 
-        wrapper = rf"""import sys, json, builtins as _b
-SAFE = {json.dumps(sorted(SAFE_MODULES))}
-_orig = _b.__import__
-def _safe_import(name, *a, **kw):
-    base = name.split('.')[0]
-    if base == 'builtins':
-        raise ImportError("module 'builtins' not allowed")
-    if base not in SAFE:
-        raise ImportError(f"module '{{name}}' not in safe list")
-    return _orig(name, *a, **kw)
-_b.__import__ = _safe_import
-_b.type = None
-_b.open = None
-exec({json.dumps(code)})
-"""
+        safe_mods = json.dumps(sorted(SAFE_MODULES))
+        safe_builtins = json.dumps([
+            'abs','all','any','bin','bool','bytes','callable','chr','complex',
+            'dict','dir','divmod','enumerate','filter','float','format','frozenset',
+            'hash','hex','id','int','isinstance','issubclass','iter','len','list',
+            'map','max','min','next','object','oct','ord','pow','print','range',
+            'repr','reversed','round','set','slice','sorted','str','sum','super',
+            'tuple','type','zip',
+            'True','False','None',
+            'Exception','ValueError','TypeError','KeyError','IndexError',
+            'AttributeError','StopIteration','RuntimeError','ZeroDivisionError',
+            'ArithmeticError','OverflowError','MemoryError',
+        ])
+        wrapper = (
+            'import sys, json\n'
+            '_b = __builtins__\n'
+            f'restricted = {{k: getattr(_b, k) for k in {safe_builtins}}}\n'
+            f'SAFE = {safe_mods}\n'
+            '_orig = _b.__import__\n'
+            'def _safe_import(name, *a, **kw):\n'
+            '    base = name.split(".")[0]\n'
+            '    if base not in SAFE:\n'
+            '        raise ImportError(f"module {name} not in safe list")\n'
+            '    return _orig(name, *a, **kw)\n'
+            "restricted['__import__'] = _safe_import\n"
+            'exec({}, restricted)\n'.format(json.dumps(code))
+        )
         try:
             r = subprocess.run(
                 [sys.executable, "-I", "-c", wrapper],

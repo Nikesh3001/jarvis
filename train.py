@@ -196,14 +196,13 @@ class TrainingSession:
                     existing = m.group(2)
                     if w not in existing:
                         new_primary = existing.rstrip() + (', ' if existing.strip() else '') + f'"{w}"'
-                        hu_src = hu_src[:m.start(2)] + new_primary + hu_src[m.end(2):]
-                        fixes.append(f"Added '{w}' to {f['expected']} primary")
+                        fixes.append(f"Suggested: Add '{w}' to {f['expected']} primary")
                         break
             if len(fixes) >= 5:
                 break
 
-        if fixes:
-            hu_path.write_text(hu_src, encoding="utf-8")
+        for fix in fixes:
+            print(f"  [FIX] {fix}")
         return fixes
 
     def run(self):

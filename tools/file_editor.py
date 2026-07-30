@@ -44,10 +44,12 @@ class FileEditor:
             content = f.read()
         if old_string not in content:
             return f"String not found in {path}"
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(content.replace(old_string, new_string))
-        count = content.count(old_string)
-        return f"Replaced {count} occurrence(s) in {path}"
+        new_content = content.replace(old_string, new_string, 1)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        os.replace(tmp, path)
+        return f"Replaced 1 occurrence(s) in {path}"
 
     def append_file(self, path, content):
         if not check_rate("file_append", rate=1, burst=5):

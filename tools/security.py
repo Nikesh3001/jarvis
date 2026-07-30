@@ -138,6 +138,8 @@ class SecurityTool:
                      "Get-NetFirewallProfile | Select-Object Name, Enabled | ConvertTo-Json"],
                     capture_output=True, text=True, timeout=15
                 )
+                if not r.stdout.strip():
+                    return "Firewall check returned empty output"
                 data = json.loads(r.stdout)
                 if isinstance(data, dict):
                     data = [data]
@@ -237,6 +239,8 @@ class SecurityTool:
                      "Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 10 HotFixID, InstalledOn, Description | ConvertTo-Json"],
                     capture_output=True, text=True, timeout=30
                 )
+                if not r.stdout.strip():
+                    return "No security update history found."
                 data = json.loads(r.stdout)
                 if isinstance(data, dict):
                     data = [data]
@@ -456,8 +460,8 @@ class SecurityTool:
             if httpx is None:
                 return "httpx not installed. Install: pip install httpx"
 
-            url = f"https://api.shodan.io/shodan/host/search?key={api_key}&query={query}&page=1"
-            response = httpx.get(url, timeout=15)
+            url = f"https://api.shodan.io/shodan/host/search?query={query}&page=1"
+            response = httpx.get(url, headers={"X-Api-Key": api_key}, timeout=15)
             data = response.json()
 
             matches = data.get("matches", [])
@@ -917,7 +921,11 @@ class SecurityTool:
                 return "Blocked: cannot SSH to internal/private addresses"
 
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.WarningPolicy())
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+            known_hosts_path = os.path.expanduser("~/.ssh/known_hosts")
+            if os.path.exists(known_hosts_path):
+                client.load_host_keys(known_hosts_path)
 
             connect_kwargs = {"hostname": host, "port": int(port), "timeout": 10}
             if username:
@@ -1204,9 +1212,7 @@ class SecurityTool:
     def msfvenom(self, payload, lhost, lport, output="payload", format="exe", platform="windows", arch="x64"):
         """Generate a payload with msfvenom."""
         if self.safe_mode:
-            return ("Payload generation blocked by safe mode. "
-                    "This is a potentially dangerous operation that creates executable payloads. "
-                    "Disable safe mode first (requires explicit user confirmation).")
+            return "msfvenom requires safe_mode to be disabled"
         found, err = self._check_msf("msfvenom")
         if not found:
             return err

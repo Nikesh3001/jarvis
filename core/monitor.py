@@ -17,6 +17,8 @@ class ProactiveMonitor:
         self.suggestion_cooldown = 300
         self.event_log = []
         self.max_events = 100
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
         try:
             import psutil as _p
             self._psutil = _p
@@ -24,21 +26,21 @@ class ProactiveMonitor:
             self._psutil = None
 
     def start(self):
-        if self.running:
-            return
-        self.running = True
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
+        with self._lock:
+            if self.thread and self.thread.is_alive():
+                return
+            if self.running:
+                return
+            self.running = True
+            self.thread = threading.Thread(target=self._run, daemon=True)
+            self.thread.start()
         print("[MONITOR] Proactive monitoring started")
 
     def stop(self):
         self.running = False
-        if hasattr(self, '_stop_event'):
-            self._stop_event.set()
+        self._stop_event.set()
 
     def _run(self):
-        if not hasattr(self, '_stop_event'):
-            self._stop_event = threading.Event()
         while self.running:
             try:
                 self._check_resources()

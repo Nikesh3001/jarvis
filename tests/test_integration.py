@@ -81,8 +81,8 @@ def test_thinking_section_word_counts():
     b._clean_content(result["message"]["content"])
     metrics = b._extract_thinking_metrics()
     sw = metrics.get("section_words", {})
-    assert "analysis" in sw or sw == {}, "Analysis section words tracked"
-    assert "improvement" in sw or True  # may be empty if no think
+    assert "analysis" in sw, "Analysis section words tracked"
+    assert "improvement" in sw or sw == {}, "may be empty if no think tag"
 
 
 def test_relevant_tools_filtering():
@@ -305,7 +305,8 @@ def test_conversation_encryption_roundtrip():
         assert decrypted == data
     except RuntimeError as e:
         if "cryptography" in str(e):
-            pass
+            import pytest
+            pytest.skip("cryptography not installed")
 
 
 def test_brain_models():

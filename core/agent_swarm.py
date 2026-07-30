@@ -192,6 +192,7 @@ class AgentSwarm:
         self.agents = {}
         self.whiteboard = {}
         self.message_log = []
+        self._lock = threading.Lock()
 
     def debug_conversation_state(self):
         """Output current conversation state for debugging."""
@@ -203,7 +204,6 @@ class AgentSwarm:
             print(f"     Subject: {msg.get('subject', 'Unknown')}")
             print(f"     Content: {str(msg.get('content', ''))[:100]}...")
             print()
-        self._lock = threading.Lock()
 
     def _get_or_create_agent(self, role):
         if role not in self.agents:

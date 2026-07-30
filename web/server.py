@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 import sys
+import secrets
 import datetime
 import threading
 from pathlib import Path
@@ -24,13 +25,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.assistant import VERSION
 
-API_KEY = os.environ.get("FRIDAY_API_KEY", "")
+API_KEY = os.environ.get("FRIDAY_API_KEY") or ""
+_HMAC_SECRET = os.environ.get("FRIDAY_HMAC_SECRET", secrets.token_hex(32)).encode()
 
 
 def _generate_csrf():
-    import secrets
     token = secrets.token_urlsafe(32)
-    sig = hmac.new(API_KEY.encode() if API_KEY else b"friday", token.encode(), hashlib.sha256).hexdigest()[:16]
+    sig = hmac.new(_HMAC_SECRET, token.encode(), hashlib.sha256).hexdigest()[:16]
     return f"{token}.{sig}"
 
 
@@ -38,7 +39,7 @@ def _validate_csrf(token):
     if not token or token.count(".") != 1:
         return False
     t, sig = token.split(".")
-    expected = hmac.new(API_KEY.encode() if API_KEY else b"friday", t.encode(), hashlib.sha256).hexdigest()[:16]
+    expected = hmac.new(_HMAC_SECRET, t.encode(), hashlib.sha256).hexdigest()[:16]
     return hmac.compare_digest(sig, expected)
 _CORS_ORIGINS_STR = os.environ.get("FRIDAY_CORS_ORIGINS",
                                      "http://127.0.0.1:8080,http://localhost:8080")
@@ -51,18 +52,18 @@ def _parse_cors_origins(raw):
 
 def _verify_api_key(key):
     if not API_KEY:
-        return True
+        return False
     if not key:
         return False
     return hmac.compare_digest(key, API_KEY)
 
 
-_NOT_AUTH_REASON = "Authentication required. Set FRIDAY_API_KEY env var or disable with empty key."
+_NOT_AUTH_REASON = "Authentication required. Set FRIDAY_API_KEY env var."
 
 
 async def _verify_request(request):
     if not API_KEY:
-        return
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NOT_AUTH_REASON)
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
@@ -87,7 +88,7 @@ async def security_headers(request, call_next):
     response = await call_next(request)
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
         "connect-src 'self' ws://127.0.0.1:* ws://localhost:*; "
         "img-src 'self' data:; "
@@ -119,8 +120,11 @@ def get_assistant():
 def is_valid_origin(origin):
     if not origin:
         return False
+    from urllib.parse import urlparse
+    parsed = urlparse(origin)
+    normalized = f"{parsed.scheme}://{parsed.netloc}"
     allowed = _parse_cors_origins(_CORS_ORIGINS_STR)
-    return origin in allowed or origin.rstrip("/") in allowed
+    return normalized in allowed
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -214,9 +218,10 @@ _MAX_MESSAGE_LENGTH = 10000
 
 
 @app.post("/api/chat")
-async def api_chat(body: dict):
+async def api_chat(body: dict, request: Request):
     message = body.get("message", "").strip()
-    auth_key = body.get("api_key", "")
+    auth_header = request.headers.get("Authorization", "")
+    auth_key = auth_header[7:] if auth_header.startswith("Bearer ") else ""
     if not _verify_api_key(auth_key):
         return {"ok": False, "error": _NOT_AUTH_REASON}
     if not message:

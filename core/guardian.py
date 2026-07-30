@@ -267,14 +267,10 @@ class PathValidator:
 
     @staticmethod
     def verify_no_symlink_race(path: str, allowed_roots: Optional[List[str]] = None) -> str:
-        stat1 = os.stat(path)
         resolved = PathValidator.safe_resolve(path, allowed_roots)
-        try:
-            stat2 = os.stat(resolved)
-        except OSError:
-            raise PermissionError("Access denied: path resolution failed after stat check")
-        if stat1.st_ino != stat2.st_ino or stat1.st_dev != stat2.st_dev:
-            audit("symlink_race_detected", "critical", {"path": path})
+        real = os.path.realpath(path)
+        if real != resolved:
+            audit("symlink_race_detected", "critical", {"path": path, "real": real, "resolved": resolved})
             raise PermissionError("Access denied: symlink race detected")
         return resolved
 

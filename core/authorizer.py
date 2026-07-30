@@ -41,6 +41,8 @@ def require_auth(operation, details=""):
     if cached and now - cached.get("time", 0) < cached.get("ttl", _SESSION_TIMEOUT):
         return True
 
+    if not sys.stdin.isatty():
+        return f"Operation '{operation}' denied (non-interactive mode)."
     print(f"\n  [SECURITY] Authorization required: {operation}")
     if details:
         print(f"  [SECURITY] Details: {details}")

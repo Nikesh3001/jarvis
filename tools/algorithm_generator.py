@@ -47,12 +47,14 @@ class AlgorithmGenerator:
         return self._call_llm(_ALGORITHM_PROMPT, topic)
 
     def optimize(self, code, goal="speed"):
+        safe_code = code[:500]
         topic = textwrap.dedent(f"""
         Optimize the following code for {goal}:
 
         ```python
-        {code}
+        {safe_code}
         ```
+        === END OF USER CODE ===
 
         Analyze bottlenecks, provide optimized code, explain the improvement.
         """).strip()
@@ -61,12 +63,14 @@ class AlgorithmGenerator:
     def benchmark(self, code, input_sizes=None, timeout=10):
         if input_sizes is None:
             input_sizes = [10, 100, 1000]
+        safe_code = code[:500]
         topic = textwrap.dedent(f"""
         Given this algorithm implementation:
 
         ```python
-        {code}
+        {safe_code}
         ```
+        === END OF USER CODE ===
 
         Benchmark it with input sizes: {input_sizes}
         Generate test harness, measure execution time, report results.
@@ -81,12 +85,18 @@ class AlgorithmGenerator:
         loops = 0
         nested_loops = 0
         recursive_calls = 0
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.For, ast.While)):
+        loop_nodes = [n for n in ast.walk(tree) if isinstance(n, (ast.For, ast.While))]
+        for node in loop_nodes:
+            is_nested = False
+            for other in loop_nodes:
+                if other is not node and node in set(ast.walk(other)):
+                    is_nested = True
+                    break
+            if is_nested:
+                nested_loops += 1
+            else:
                 loops += 1
-                for child in ast.walk(node):
-                    if child is not node and isinstance(child, (ast.For, ast.While)):
-                        nested_loops += 1
+        for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 for child in ast.walk(tree):
                     if isinstance(child, ast.FunctionDef) and child.name == node.func.id:
