@@ -41,7 +41,6 @@ class TrainingSession:
             ("news", ["latest news", "breaking headlines", "top stories"]),
             ("stocks", ["stock price AAPL", "market summary today"]),
             ("scrape", ["scrape this page", "extract links from url"]),
-            ("security", ["check security", "scan ports", "firewall status"]),
             ("research_deep", ["research quantum computing", "deep analysis of algorithm"]),
             ("language_tools", ["lint this file", "format code", "install package pytest"]),
             ("task_orchestrator", ["orchestrate the build"]),

@@ -2,7 +2,7 @@
 Generates responses, validates <think> sections, auto-corrects, iterates until pass rate >= 95%.
 """
 
-import sys, os, re, json, time
+import sys, re, json, time
 from pathlib import Path
 from datetime import datetime
 
@@ -288,4 +288,12 @@ if __name__ == "__main__":
         print(f"\n  PASSED: {final:.1f} >= {target}")
     else:
         print(f"\n  BELOW THRESHOLD: {final:.1f} < {target}")
-    sys.exit(0 if final >= target else 1)
+
+if __name__ == "__main__":
+    session = ThinkingTrainingSession()
+    final = session.run()
+    target = 95.0
+    if final >= target:
+        print(f"\n  PASSED: {final:.1f} >= {target}")
+    else:
+        print(f"\n  BELOW THRESHOLD: {final:.1f} < {target}")

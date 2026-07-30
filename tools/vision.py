@@ -9,6 +9,7 @@ import time
 import json
 from pathlib import Path
 from typing import Optional
+from core.guardian import PathValidator
 from core.platform_utils import is_windows, is_macos, is_linux
 
 
@@ -25,6 +26,10 @@ class VisionEngine:
         return self.analyze_image(path, prompt)
 
     def analyze_image(self, image_path: str, prompt: str = "Describe this image in detail.") -> str:
+        try:
+            image_path = PathValidator.safe_resolve(image_path)
+        except PermissionError:
+            return f"Access denied: {image_path}"
         if not os.path.exists(image_path):
             return f"Image not found: {image_path}"
         ext = Path(image_path).suffix.lower()

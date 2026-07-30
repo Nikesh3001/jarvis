@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -73,14 +74,16 @@ class WebTestingTools:
         if not self._check_rate("generate_test"):
             return "Rate limited"
         try:
+            safe_url = url.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+            safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', url)
             script = '"""Auto-generated Playwright test."""\n'
             script += "from playwright.sync_api import sync_playwright\n\n\n"
-            script += f'def test_{url.replace("://", "_").replace(".", "_").replace("/", "_")}():\n'
-            script += f'    """Test: {url}"""\n'
+            script += f'def test_{safe_name}():\n'
+            script += f'    """Test: {safe_url}"""\n'
             script += "    with sync_playwright() as p:\n"
             script += "        browser = p.chromium.launch()\n"
             script += "        page = browser.new_page()\n"
-            script += f'        page.goto("{url}")\n\n'
+            script += f'        page.goto("{safe_url}")\n\n'
             for i, tc in enumerate(test_cases):
                 if isinstance(tc, str):
                     script += f"        # Test case {i+1}: {tc}\n"

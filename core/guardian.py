@@ -32,7 +32,6 @@ SECRET_LEAK_PATTERNS = re.compile(
     r")"
 )
 
-_SHELL_BLOCKED_TOOLS = r"\b(?:certutil|bitsadmin|wget|curl|Invoke-Expression|Start-Process|Remove-Item)\s"
 _SHELL_BLOCKED_WORDS = r"(?:\b(?:certutil|bitsadmin|wget|curl|Invoke-Expression|iex|Start-Process|Remove-Item)\s)"
 SHELL_INJECTION_PATTERN = re.compile(
     r"(?:[;&|`$(){}\n\r\t\x00])|"
@@ -429,7 +428,7 @@ class CodeSandbox:
             "pow": pow, "print": print, "property": property,
             "range": range, "repr": repr, "reversed": reversed, "round": round,
             "set": set, "slice": slice, "sorted": sorted, "str": str, "sum": sum,
-            "tuple": tuple, "type": type,
+            "tuple": tuple,
             "zip": zip,
             "True": True, "False": False, "None": None,
             "__import__": safe_import,
@@ -493,6 +492,7 @@ class SSRFGuard:
         try:
             import dns.resolver
         except ImportError:
+            audit("dns_rebinding_unavailable", "high", {"hostname": hostname})
             return False
         try:
             answers = dns.resolver.resolve(hostname, "A")

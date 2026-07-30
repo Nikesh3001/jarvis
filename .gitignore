@@ -21,6 +21,7 @@ user_profile.json
 test_input.txt
 uv.lock
 .rate_state
+.rate_key
 
 # Tool binaries (install manually)
 tools/bin/*.exe

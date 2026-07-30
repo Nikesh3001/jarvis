@@ -22,8 +22,8 @@ class SessionManager:
     def __init__(self):
         self._lock = threading.Lock()
         self._sessions: Dict[str, float] = {}
-        self._secret = self._load_or_create_secret()
         AUTH_DIR.mkdir(parents=True, exist_ok=True)
+        self._secret = self._load_or_create_secret()
         self._load_sessions()
         self._start_cleanup()
 

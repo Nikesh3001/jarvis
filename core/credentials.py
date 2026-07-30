@@ -11,13 +11,23 @@ from typing import Optional, Dict
 
 CRED_DIR = Path(__file__).parent.parent / ".credentials"
 CRED_FILE = CRED_DIR / "vault.json"
-MASTER_KEY_FILE = CRED_DIR / ".master"
+SALT_FILE = CRED_DIR / ".salt"
+
+
+def _get_or_create_salt():
+    if SALT_FILE.exists():
+        return SALT_FILE.read_bytes()[:16]
+    salt = secrets.token_bytes(16)
+    try:
+        SALT_FILE.write_bytes(salt)
+    except Exception:
+        pass
+    return salt
 
 
 class CredentialVault:
     def __init__(self):
         self._vault: Dict[str, str] = {}
-        self._unlocked = False
         CRED_DIR.mkdir(parents=True, exist_ok=True)
         if CRED_FILE.exists():
             try:
@@ -53,13 +63,9 @@ class CredentialVault:
                 pass
         return "|".join(parts)
 
-    def _derive_machine_key(self, salt: bytes = None) -> bytes:
+    def _derive_machine_key(self) -> bytes:
         machine_id = self._get_machine_id()
-        if salt is None:
-            salt = self._vault_path.read_bytes()[:16] if self._vault_path.exists() else b""
-        if len(salt) < 16:
-            import secrets
-            salt = secrets.token_bytes(16)
+        salt = _get_or_create_salt()
         return hashlib.pbkdf2_hmac("sha256", machine_id.encode(), salt, 100000, dklen=32)
 
     def _encrypt(self, plaintext: str) -> str:
@@ -111,6 +117,7 @@ class CredentialVault:
     def delete(self, key: str) -> bool:
         if key in self._vault:
             del self._vault[key]
+            self._flush()
             return True
         return False
 

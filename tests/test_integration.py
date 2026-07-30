@@ -116,15 +116,6 @@ def test_error_sanitization():
         assert expected in result, f"'{case_input}' did not produce '{expected}'"
 
 
-def test_csrf_token():
-    from web.server import _generate_csrf, _validate_csrf
-    token = _generate_csrf()
-    assert "." in token
-    assert _validate_csrf(token)
-    assert not _validate_csrf("invalid")
-    assert not _validate_csrf("too.many.dots")
-
-
 def test_rate_checker():
     from core.ratelimit import check_rate
     assert check_rate("test_checker", rate=100, burst=200), "Should allow first call"

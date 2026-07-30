@@ -3,7 +3,7 @@
 
 __all__ = ["SystemTools", "WebTools", "FileTools", "CodeInterpreter",
            "FileEditor", "ShellCommander", "GitOps", "Automator", "Planner",
-           "NewsTool", "StockTool", "WebScraper", "SecurityTool", "LanguageTools",
+           "NewsTool", "StockTool", "WebScraper", "LanguageTools",
            "InternetTools"]
 
 
@@ -44,9 +44,6 @@ def __getattr__(name):
     if name == "WebScraper":
         from tools.scraper import WebScraper
         return WebScraper
-    if name == "SecurityTool":
-        from tools.security import SecurityTool
-        return SecurityTool
     if name == "LanguageTools":
         from tools.languages import LanguageTools
         return LanguageTools

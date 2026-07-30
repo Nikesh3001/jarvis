@@ -1,8 +1,14 @@
 import json
+import os
 import subprocess
 import threading
 import time
 from pathlib import Path
+
+
+_MCP_ALLOWED_COMMANDS = {
+    "node", "python", "python3", "uvx", "npx", "deno", "bun",
+}
 
 
 class MCPClient:
@@ -20,6 +26,11 @@ class MCPClient:
 
     def connect_stdio(self, command, args=None):
         args = args or []
+        cmd_base = os.path.basename(command).lower()
+        if cmd_base not in _MCP_ALLOWED_COMMANDS:
+            raise ValueError(f"Command '{command}' is not in allowed MCP commands list")
+        if any(c in str(arg) for arg in [command] + args for c in '<>|`&\n\r\x00$()"\\'):
+            raise ValueError("Invalid characters in command or arguments")
         self._process = subprocess.Popen(
             [command] + args,
             stdin=subprocess.PIPE,

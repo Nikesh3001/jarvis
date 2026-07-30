@@ -15,9 +15,9 @@ class AgentSession:
         self.tools_used = []
         self.files_modified = {}
         self.metadata = {
-            "project": config.get("project", "unknown"),
-            "branch": config.get("branch", "main"),
-            "model": config.get("model", "smart"),
+            "project": self.config.get("project", "unknown"),
+            "branch": self.config.get("branch", "main"),
+            "model": self.config.get("model", "smart"),
         }
         self._lock = threading.Lock()
 
@@ -60,6 +60,9 @@ class AgentSession:
             "tools_used_count": len(self.tools_used),
             "files_changed": len(self.files_modified),
             "metadata": self.metadata,
+            "messages": self.messages[-100:],
+            "tools_used": self.tools_used[-50:],
+            "files_modified": self.files_modified,
         }
 
 
@@ -84,7 +87,7 @@ class SessionManager:
         self._load_sessions()
 
     def create_session(self, config=None):
-        session_id = str(uuid.uuid4())[:8]
+        session_id = str(uuid.uuid4())
         session = AgentSession(session_id, config)
         with self._lock:
             self.sessions[session_id] = session
@@ -139,6 +142,12 @@ class SessionManager:
                 session = AgentSession(sid, data.get("metadata", {}))
                 session.created_at = datetime.fromisoformat(data.get("created_at", datetime.now().isoformat())).timestamp()
                 session.last_active = datetime.fromisoformat(data.get("last_active", datetime.now().isoformat())).timestamp()
+                if "messages" in data:
+                    session.messages = data["messages"]
+                if "tools_used" in data:
+                    session.tools_used = data["tools_used"]
+                if "files_modified" in data:
+                    session.files_modified = data["files_modified"]
                 with self._lock:
                     self.sessions[sid] = session
             except Exception:

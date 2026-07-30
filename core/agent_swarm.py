@@ -175,16 +175,6 @@ class AgentSwarm:
                 "You produce test plans and test code."
             ),
         },
-        "security": {
-            "title": "Security Engineer",
-            "focus": "vulnerabilities, hardening, secure coding, threat modeling",
-            "persona": (
-                "You are an elite security engineer. You think like an adversary. "
-                "You analyze systems for vulnerabilities using threat modeling. "
-                "You discuss findings with the developer and architect. "
-                "You provide practical hardening recommendations."
-            ),
-        },
     }
 
     def __init__(self, brain=None):
@@ -230,7 +220,8 @@ class AgentSwarm:
             self.agents[message.recipient].receive(message)
 
     def get_whiteboard(self, key, default=None):
-        return self.whiteboard.get(key, default)
+        with self._lock:
+            return self.whiteboard.get(key, default)
 
     def set_whiteboard(self, key, value):
         with self._lock:
@@ -271,7 +262,7 @@ class AgentSwarm:
         return ordered
 
     def run_pipeline(self, task, context=""):
-        all_roles = ["analyst", "architect", "developer", "reviewer", "tester", "security"]
+        all_roles = ["analyst", "architect", "developer", "reviewer", "tester"]
         self.set_whiteboard("task", task)
 
         analyst_result = self._run_single("analyst", task, context)
@@ -283,7 +274,7 @@ class AgentSwarm:
 
         parallel_phases = self.run_parallel(
             "Review and test the implementation",
-            phases=["reviewer", "tester", "security"],
+            phases=["reviewer", "tester"],
             context=f"Task: {task}\n\nArchitecture:\n{arch_result}\n\nImplementation:\n{dev_result}",
         )
 
@@ -399,7 +390,7 @@ class AgentSwarm:
                 "type": "function",
                 "function": {
                     "name": "agent_swarm",
-                    "description": "Run a task through parallel AI agents (analyst, architect, developer, reviewer, tester, security) that talk to each other and work concurrently. Use for complex multi-faceted tasks.",
+                    "description": "Run a task through parallel AI agents (analyst, architect, developer, reviewer, tester) that talk to each other and work concurrently. Use for complex multi-faceted tasks.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -418,7 +409,7 @@ class AgentSwarm:
                 "type": "function",
                 "function": {
                     "name": "delegate_agent",
-                    "description": "Delegate a task to a single specialist agent (analyst, architect, developer, reviewer, tester, security)",
+                    "description": "Delegate a task to a single specialist agent (analyst, architect, developer, reviewer, tester)",
                     "parameters": {
                         "type": "object",
                         "properties": {

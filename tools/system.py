@@ -1,6 +1,7 @@
 import os, sys, time, datetime, json, subprocess, tempfile
 from pathlib import Path
 
+from core.guardian import PathValidator
 from core.platform_utils import (
     is_windows, is_macos, is_linux, get_platform, get_hostname,
     take_screenshot_cli, get_clipboard_text, set_clipboard_text,
@@ -126,7 +127,7 @@ class SystemTools:
             path = str(path)
             if any(c in path for c in '<>|`&\n\r\x00'):
                 return "Start process failed: invalid characters in path"
-            resolved = os.path.realpath(os.path.expanduser(path))
+            resolved = PathValidator.safe_resolve(path)
             if not os.path.exists(resolved):
                 return f"Start process failed: path not found: {path}"
             parts = os.path.splitext(resolved)
@@ -136,6 +137,8 @@ class SystemTools:
             else:
                 open_file(resolved)
             return f"Started: {path}"
+        except PermissionError as e:
+            return str(e)
         except Exception as e:
             return "Start process failed"
 

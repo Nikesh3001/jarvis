@@ -9,6 +9,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
 from core.ratelimit import check_rate
+from core.guardian import PathValidator
 
 
 MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -17,6 +18,12 @@ MAX_FILE_SIZE = 50 * 1024 * 1024
 class OfficeTools:
     def _check_rate(self, op):
         return check_rate(f"office:{op}", rate=5, burst=10)
+
+    def _validate_path(self, path):
+        try:
+            return PathValidator.safe_resolve(path)
+        except PermissionError as e:
+            raise PermissionError(str(e))
 
     def _get_pypdf(self):
         try:
@@ -59,6 +66,10 @@ class OfficeTools:
         docx_mod = self._get_docx()
         if not docx_mod:
             return "python-docx not installed"
+        try:
+            path = self._validate_path(path)
+        except PermissionError as e:
+            return str(e)
         if not os.path.exists(path):
             return "File not found"
         if os.path.getsize(path) > MAX_FILE_SIZE:
@@ -119,6 +130,12 @@ class OfficeTools:
         docx_mod = self._get_docx()
         if not docx_mod:
             return "python-docx not installed"
+        try:
+            path = self._validate_path(path)
+            if output_path:
+                output_path = self._validate_path(output_path)
+        except PermissionError as e:
+            return str(e)
         if not os.path.exists(path):
             return "File not found"
         out = output_path or path
@@ -155,6 +172,12 @@ class OfficeTools:
         openpyxl_mod = self._get_openpyxl()
         if not openpyxl_mod:
             return "openpyxl not installed"
+        try:
+            path = self._validate_path(path)
+            if output_path:
+                output_path = self._validate_path(output_path)
+        except PermissionError as e:
+            return str(e)
         if not os.path.exists(path):
             return "File not found"
         out = output_path or path
@@ -175,6 +198,10 @@ class OfficeTools:
     def pdf_extract_fields(self, path):
         if not self._check_rate("pdf_fields"):
             return "Rate limited"
+        try:
+            path = self._validate_path(path)
+        except PermissionError as e:
+            return str(e)
         if not os.path.exists(path):
             return "File not found"
         try:
@@ -219,6 +246,11 @@ class OfficeTools:
     def pdf_fill_fields(self, path, field_data, output_path):
         if not self._check_rate("pdf_fill"):
             return "Rate limited"
+        try:
+            path = self._validate_path(path)
+            output_path = self._validate_path(output_path)
+        except PermissionError as e:
+            return str(e)
         if not os.path.exists(path):
             return "File not found"
         try:
@@ -249,6 +281,12 @@ class OfficeTools:
     def pdf_add_annotation(self, path, page_num, text, x, y, output_path=None):
         if not self._check_rate("pdf_annotation"):
             return "Rate limited"
+        try:
+            path = self._validate_path(path)
+            if output_path:
+                output_path = self._validate_path(output_path)
+        except PermissionError as e:
+            return str(e)
         if not os.path.exists(path):
             return "File not found"
         out = output_path or path
@@ -277,6 +315,12 @@ class OfficeTools:
         pptx_mod = self._get_pptx()
         if not pptx_mod:
             return "python-pptx not installed"
+        try:
+            path = self._validate_path(path)
+            if output_path:
+                output_path = self._validate_path(output_path)
+        except PermissionError as e:
+            return str(e)
         if not os.path.exists(path):
             return "File not found"
         out = output_path or path
@@ -296,6 +340,12 @@ class OfficeTools:
         pptx_mod = self._get_pptx()
         if not pptx_mod:
             return "python-pptx not installed"
+        try:
+            path = self._validate_path(path)
+            if output_path:
+                output_path = self._validate_path(output_path)
+        except PermissionError as e:
+            return str(e)
         if not os.path.exists(path):
             return "File not found"
         out = output_path or path

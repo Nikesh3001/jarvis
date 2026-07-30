@@ -10,7 +10,6 @@ class MultiAgentSystem:
     - Analyst: Analyzes requirements and problems
     - Reviewer: Reviews code and provides feedback
     - Tester: Tests and validates implementations
-    - Security: Reviews for security vulnerabilities
     """
 
     ROLES = {
@@ -39,16 +38,11 @@ class MultiAgentSystem:
             "focus": "testing, edge cases, validation, quality assurance",
             "persona": "You are a thorough QA engineer. You design test cases, test edge cases, validate functionality, and ensure quality. You think about what could break and how to prevent it."
         },
-        "security": {
-            "title": "Security Engineer",
-            "focus": "vulnerabilities, hardening, secure coding, threat modeling",
-            "persona": "You are a security engineer. You identify vulnerabilities, recommend hardening measures, and ensure secure coding practices. You think like an attacker to find weaknesses."
-        },
     }
 
     def __init__(self, brain=None):
         self.brain = brain
-        self._roles = ["analyst", "architect", "developer", "reviewer", "tester", "security"]
+        self._roles = ["analyst", "architect", "developer", "reviewer", "tester"]
         self._output = {}
 
     def run_team(self, task, context=""):
@@ -58,7 +52,6 @@ class MultiAgentSystem:
         results["implementation"] = self._run_role("developer", task, results["architecture"])
         results["review"] = self._run_role("reviewer", task, results["implementation"])
         results["testing"] = self._run_role("tester", task, results["implementation"])
-        results["security_review"] = self._run_role("security", task, results["implementation"])
         summary = self._generate_summary(task, results)
         return {
             "task": task,
@@ -67,7 +60,7 @@ class MultiAgentSystem:
         }
 
     def run_phase(self, phase, task, context=""):
-        valid_phases = ["analyst", "architect", "developer", "reviewer", "tester", "security"]
+        valid_phases = ["analyst", "architect", "developer", "reviewer", "tester"]
         if phase not in valid_phases:
             return f"Invalid phase. Choose from: {', '.join(valid_phases)}"
         result = self._run_role(phase, task, context)
@@ -161,8 +154,8 @@ class MultiAgentSystem:
 
     def get_tool_definitions(self):
         return [
-            {"type": "function", "function": {"name": "run_phase", "description": "Run team role (analyst/architect/developer/reviewer/tester/security)", "parameters": {"type": "object", "properties": {"phase": {"type": "string", "enum": ["analyst", "architect", "developer", "reviewer", "tester", "security"], "description": "Role"}, "task": {"type": "string", "description": "Task"}, "context": {"type": "string", "description": "Context", "default": ""}}, "required": ["phase", "task"]}}},
-            {"type": "function", "function": {"name": "run_team", "description": "Full dev pipeline: analyst→architect→developer→reviewer→tester→security", "parameters": {"type": "object", "properties": {"task": {"type": "string", "description": "Task"}, "context": {"type": "string", "description": "Context", "default": ""}}, "required": ["task"]}}},
+            {"type": "function", "function": {"name": "run_phase", "description": "Run team role (analyst/architect/developer/reviewer/tester)", "parameters": {"type": "object", "properties": {"phase": {"type": "string", "enum": ["analyst", "architect", "developer", "reviewer", "tester"], "description": "Role"}, "task": {"type": "string", "description": "Task"}, "context": {"type": "string", "description": "Context", "default": ""}}, "required": ["phase", "task"]}}},
+            {"type": "function", "function": {"name": "run_team", "description": "Full dev pipeline: analyst→architect→developer→reviewer→tester", "parameters": {"type": "object", "properties": {"task": {"type": "string", "description": "Task"}, "context": {"type": "string", "description": "Context", "default": ""}}, "required": ["task"]}}},
             {"type": "function", "function": {"name": "design_architecture", "description": "Full system architecture design", "parameters": {"type": "object", "properties": {"project_name": {"type": "string", "description": "Project"}, "requirements": {"type": "string", "description": "Reqs"}}, "required": ["project_name", "requirements"]}}},
             {"type": "function", "function": {"name": "research_topic", "description": "Research with pros/cons", "parameters": {"type": "object", "properties": {"topic": {"type": "string", "description": "Topic"}}, "required": ["topic"]}}},
         ]

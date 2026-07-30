@@ -719,51 +719,6 @@ def get_firewall_status():
     return "Firewall status unavailable"
 
 
-def get_security_updates():
-    if is_windows():
-        r = subprocess.run(["powershell", "-NoProfile", "-Command",
-            "Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 10 "
-            "HotFixId,InstalledOn | ConvertTo-Json"],
-            capture_output=True, text=True, timeout=30)
-        try:
-            data = json.loads(r.stdout)
-            if isinstance(data, dict):
-                data = [data]
-            if isinstance(data, list):
-                return [f"{d.get('HotFixId','?')} ({d.get('InstalledOn','?')})" for d in data if isinstance(d, dict)]
-        except Exception:
-            pass
-        return []
-    if is_macos():
-        r = subprocess.run(["softwareupdate", "--list"], capture_output=True, text=True, timeout=30)
-        return [l.strip() for l in r.stdout.split('\n') if 'recommended' in l.lower() or '*' in l][:10]
-    r = subprocess.run(["apt", "list", "--upgradable"], capture_output=True, text=True, timeout=30)
-    if r.returncode == 0:
-        return [l.strip() for l in r.stdout.strip().split('\n')[1:][:10] if l.strip()]
-    r2 = subprocess.run(["yum", "check-update"], capture_output=True, text=True, timeout=30)
-    if r2.returncode == 0:
-        return [l.strip() for l in r2.stdout.strip().split('\n')[:10] if l.strip()]
-    r3 = subprocess.run(["dnf", "check-update"], capture_output=True, text=True, timeout=30)
-    if r3.returncode == 0:
-        return [l.strip() for l in r3.stdout.strip().split('\n')[:10] if l.strip()]
-    return []
-
-
-def get_nmap_path():
-    which = shutil.which("nmap")
-    if which:
-        return which
-    candidates = [
-        r"C:\Program Files (x86)\Nmap\nmap.exe",
-        r"C:\Program Files\Nmap\nmap.exe",
-        r"C:\nmap\nmap.exe",
-    ]
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-    return None
-
-
 def get_chrome_profiles():
     """List Chrome profiles across platforms."""
     if is_windows():

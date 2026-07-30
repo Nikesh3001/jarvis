@@ -75,20 +75,6 @@ A hash table maps keys to values using a hash function..."""
     assert len(suggestions) > 0
     print(f"  PASS  Thinking protocol: {len(REQUIRED_SECTIONS)} sections, trainer works, suggestions generated")
 
-def test_security_audit():
-    print("\n--- Security Audit ---")
-    from core.security_audit import SecurityAuditor
-    auditor = SecurityAuditor(str(ROOT))
-    report = auditor.audit_all()
-    s = report["summary"]
-    print(f"  Findings: {s['total_findings']} (C:{s['CRITICAL']} H:{s['HIGH']} M:{s['MEDIUM']} L:{s['LOW']})")
-    print(f"  Risk Score: {s['risk_score']:.1f}/100")
-    for finding in report["findings"][:10]:
-        print(f"    [{finding['severity']:8s}] {finding['title'][:50]}")
-    if len(report["findings"]) > 10:
-        print(f"    ... and {len(report['findings']) - 10} more findings")
-    return report
-
 def test_response_safety():
     print("\n--- Response Safety ---")
     from core.response_safety import safe_get, extract_response_content, ensure_result_dict
@@ -227,14 +213,12 @@ if __name__ == "__main__":
 
     if FAIL == 0:
         pytest_ok = run_pytest_suite()
-        final_report = test_security_audit()
         training_score = run_thinking_training_loop()
 
         print(f"\n{'=' * 60}")
         print(f"  FINAL VERDICT")
         print(f"{'=' * 60}")
         print(f"  Pytest suite:      {'PASS' if pytest_ok else 'FAIL'}")
-        print(f"  Security audit:    {final_report['summary']['total_findings']} findings (risk: {final_report['summary']['risk_score']:.1f}/100)")
         print(f"  Thinking training: {training_score:.1f}/100")
         print(f"{'=' * 60}")
 

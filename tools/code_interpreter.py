@@ -116,7 +116,7 @@ class CodeInterpreter:
             'hash','hex','id','int','isinstance','issubclass','iter','len','list',
             'map','max','min','next','object','oct','ord','pow','print','range',
             'repr','reversed','round','set','slice','sorted','str','sum','super',
-            'tuple','type','zip',
+            'tuple','zip',
             'True','False','None',
             'Exception','ValueError','TypeError','KeyError','IndexError',
             'AttributeError','StopIteration','RuntimeError','ZeroDivisionError',
@@ -134,8 +134,8 @@ class CodeInterpreter:
             '        raise ImportError(f"module {name} not in safe list")\n'
             '    return _orig(name, *a, **kw)\n'
             "restricted['__import__'] = _safe_import\n"
-            'exec({}, restricted)\n'.format(json.dumps(code))
-        )
+            "restricted['__builtins__'] = restricted\n"
+        ) + 'exec({}, restricted)\n'.format(json.dumps(code))
         try:
             r = subprocess.run(
                 [sys.executable, "-I", "-c", wrapper],

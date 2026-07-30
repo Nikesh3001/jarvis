@@ -1,4 +1,4 @@
-import os, sys, time, datetime, json, threading, random, base64, hashlib, shutil, re, secrets
+import os, sys, time, datetime, json, threading, random, base64, hashlib, shutil, re
 from pathlib import Path
 
 from core.speech import SpeechEngine, STARK_QUOTES
@@ -15,20 +15,20 @@ def _get_encryption_key():
     try:
         from core.credentials import CredentialVault
         vault = CredentialVault()
-        key_b64 = vault.get("conversation_key")
+        key_b64 = vault.retrieve("conversation_key")
         if key_b64:
             _ENCRYPTION_KEY = base64.b64decode(key_b64)
             return _ENCRYPTION_KEY
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  [ENCRYPTION] Vault read failed: {e}")
     key = os.urandom(32)
     _ENCRYPTION_KEY = key
     try:
         from core.credentials import CredentialVault
         vault = CredentialVault()
-        vault.set("conversation_key", base64.b64encode(key).decode("ascii"))
-    except Exception:
-        pass
+        vault.store("conversation_key", base64.b64encode(key).decode("ascii"))
+    except Exception as e:
+        print(f"  [ENCRYPTION] Vault write failed: {e}")
     return key
 
 
@@ -139,6 +139,7 @@ class Assistant:
         self.brain = self._init_brain()
         self.system = SystemTools()
         self.conversation = []
+        self._conversation_lock = threading.Lock()
         self.history_dir = Path(__file__).parent.parent / "conversations"
         self.history_dir.mkdir(exist_ok=True)
         self.session_file = None
@@ -157,7 +158,6 @@ class Assistant:
         self._news = None
         self._stocks = None
         self._scraper = None
-        self._security = None
         self._multi_agent = None
         self._code_index = None
         self._plugin_manager = None
@@ -181,7 +181,6 @@ class Assistant:
         self._register_news()
         self._register_stocks()
         self._register_scraper()
-        self._register_security()
         self._register_multi_agent()
         self._register_code_index()
         self._register_languages()
@@ -361,16 +360,6 @@ class Assistant:
                 self._scraper.get_handler
             )
 
-    def _lazy_security(self):
-        if self._security is None:
-            from tools.security import SecurityTool
-            self._security = SecurityTool()
-            self._security.safe_mode = self.safe_mode
-            self.brain.register_tools(
-                self._security.get_tool_definitions(),
-                self._security.get_handler
-            )
-
     def _lazy_multi_agent(self):
         if self._multi_agent is None:
             from core.multi_agent import MultiAgentSystem
@@ -421,9 +410,6 @@ class Assistant:
 
     def _register_scraper(self):
         self._lazy_scraper()
-
-    def _register_security(self):
-        self._lazy_security()
 
     def _register_multi_agent(self):
         self._lazy_multi_agent()
@@ -581,43 +567,56 @@ class Assistant:
         if session_file is None:
             sessions = sorted(self.history_dir.glob("session_*.json"), reverse=True)
             if not sessions:
-                self.speech.speak("No saved conversations found.")
+                if not self.text_mode:
+                    self.speech.speak("No saved conversations found.")
                 return False
             session_file = sessions[0]
         try:
             raw = session_file.read_text(encoding="utf-8")
             plain = self._deobfuscate(raw)
             data = json.loads(plain)
-            self.conversation = data.get("messages", [])
+            if not isinstance(data, dict):
+                raise ValueError("Invalid conversation data")
+            self.conversation = data.get("messages", []) or []
             self.session_file = Path(session_file)
-            self.speech.speak(f"Loaded conversation with {len(self.conversation)} messages.")
+            if not self.text_mode:
+                self.speech.speak(f"Loaded conversation with {len(self.conversation)} messages.")
             return True
         except Exception:
-            self.speech.speak("Failed to load conversation.")
+            if not self.text_mode:
+                self.speech.speak("Failed to load conversation.")
             return False
 
     def _list_conversations(self):
         sessions = sorted(self.history_dir.glob("session_*.json"), reverse=True)
+        result = []
         if not sessions:
-            self.speech.speak("No saved conversations found.")
-            return
-        print("\n  Saved conversations:")
+            if not self.text_mode:
+                self.speech.speak("No saved conversations found.")
+            return result
         for i, s in enumerate(sessions[:20]):
             try:
                 raw = s.read_text(encoding="utf-8")
                 plain = self._deobfuscate(raw)
                 data = json.loads(plain)
+                if not isinstance(data, dict):
+                    raise ValueError("Invalid data")
                 ts = data.get("timestamp", "unknown")
-                msgs = len(data.get("messages", []))
+                msgs = len(data.get("messages", []) or [])
+                result.append({"name": s.name, "messages": msgs, "timestamp": ts})
                 print(f"    {i+1}. {s.name} ({msgs} messages) - {ts}")
             except Exception:
+                result.append({"name": s.name, "messages": 0, "timestamp": "corrupted"})
                 print(f"    {i+1}. {s.name} (corrupted)")
-        self.speech.speak(f"Found {len(sessions)} saved conversations on screen.")
+        if not self.text_mode:
+            self.speech.speak(f"Found {len(sessions)} saved conversations on screen.")
+        return result
 
     def _clear_conversation(self):
         self.conversation = []
         self.session_file = None
-        self.speech.speak("Conversation history cleared.")
+        if not self.text_mode:
+            self.speech.speak("Conversation history cleared.")
 
     def _cleanup_old(self, keep=20):
         sessions = sorted(self.history_dir.glob("session_*.json"), reverse=True)
@@ -665,8 +664,6 @@ class Assistant:
             self.system.safe_mode = True
             if self._automator:
                 self._automator.safe_mode = True
-            if self._security:
-                self._security.safe_mode = True
             self.speech.speak("Safe mode engaged. I'll ask before every command.")
             return True
 
@@ -691,8 +688,6 @@ class Assistant:
             self.system.safe_mode = False
             if self._automator:
                 self._automator.safe_mode = False
-            if self._security:
-                self._security.safe_mode = False
             print(f"  [AUDIT] Safe mode DISABLED by {_user} at {_ts}")
             self.speech.speak("Safe mode disabled. Running commands without confirmation.")
             return True
@@ -982,17 +977,9 @@ class Assistant:
   [N] News:       "News" / "Headlines" / "Current events"
   [W] Wikipedia:  "Wikipedia [topic]" / "Look up [topic]"
   [S] Stocks:     "Stock [symbol]" / "Market" / "Stock price [AAPL]"
-  [W] Scraper:    "Scrape [url]" / "Extract links [url]" / "Check site [url]"
-  [S] Security:   "Check ports" / "Firewall status" / "Security audit"
-                  "Nmap [target]" / "Shodan [query]" / "DNS [domain]"
-                  "SSL check [host]" / "WHOIS [domain]" / "SSH [host] [cmd]"
-                  "Hash [file]" / "Traceroute [target]" / "Headers [url]"
-                  "Nmap [target]" / "Shodan [query]" / "DNS [domain]"
-                  "SSL check [host]" / "WHOIS [domain]" / "SSH [host] [cmd]"
-                  "Hash [file]" / "Traceroute [target]" / "Headers [url]"
   [T] Team:       "Design architecture [project]" / "Review code"
-                  "Research [topic]" / "Run team on [task]"
-                  (analyst -> architect -> developer -> reviewer -> tester -> security)
+                   "Research [topic]" / "Run team on [task]"
+                   (analyst -> architect -> developer -> reviewer -> tester)
   [A] Agent:      "Agent mode" -- I handle complex tasks autonomously
   [S] Safety:     "Safe mode on/off"
   [X] "Goodbye" / "Exit" to power down

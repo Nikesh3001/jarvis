@@ -42,7 +42,7 @@ def require_auth(operation, details=""):
         return True
 
     if not sys.stdin.isatty():
-        return f"Operation '{operation}' denied (non-interactive mode)."
+        return False
     print(f"\n  [SECURITY] Authorization required: {operation}")
     if details:
         print(f"  [SECURITY] Details: {details}")
@@ -56,11 +56,11 @@ def require_auth(operation, details=""):
         _verified_ops[operation] = {"time": now, "ttl": _SESSION_TIMEOUT}
         _save_auths(_verified_ops)
         return True
-    return f"Operation '{operation}' denied by user."
+    return False
 
 
 def require_auth_noninteractive(operation, details=""):
-    return f"Operation '{operation}' requires interactive authorization in non-interactive mode."
+    return False
 
 
 def clear_auths():

@@ -1,7 +1,7 @@
 [project]
 name = "jarvis"
 version = "5.0.0"
-description = "Cross-Platform AI Assistant with Cybersecurity & Web Dashboard"
+description = "Cross-Platform AI Assistant with Web Dashboard"
 requires-python = ">=3.10"
 dependencies = [
     "pyrefly>=0.60.0",

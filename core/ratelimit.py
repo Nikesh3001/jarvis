@@ -3,11 +3,26 @@ import threading
 import json
 import hmac
 import hashlib
+import secrets
 from pathlib import Path
 
 
 _RATE_STATE_PATH = Path(__file__).parent.parent / ".rate_state"
-_HMAC_KEY = hashlib.sha256(b"FRIDAY_RATELIMIT_HMAC_2024").digest()
+_KEY_FILE = Path(__file__).parent.parent / ".rate_key"
+
+
+def _load_hmac_key():
+    if _KEY_FILE.exists():
+        return _KEY_FILE.read_bytes()[:32]
+    key = secrets.token_bytes(32)
+    try:
+        _KEY_FILE.write_bytes(key)
+    except Exception:
+        pass
+    return key
+
+
+_HMAC_KEY = _load_hmac_key()
 
 
 class TokenBucket:

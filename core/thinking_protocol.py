@@ -35,7 +35,8 @@ def validate_thinking(content: str) -> Dict:
     result["total_words"] = len(think_text.split())
 
     for section in REQUIRED_SECTIONS:
-        pattern = rf'\*\*{section}:\*\*(.*?)(?=\*\*|\Z)'
+        next_sections = "|".join(REQUIRED_SECTIONS)
+        pattern = rf'\*\*{section}:\*\*(.*?)(?=\*\*(?:{next_sections}):\*\*|\Z)'
         match = re.search(pattern, think_text, re.DOTALL)
         if match:
             section_text = match.group(1).strip()

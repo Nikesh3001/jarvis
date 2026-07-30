@@ -11,7 +11,6 @@
   const modelBadge  = $("#modelBadge");
   const statusDot   = $("#statusDot");
 
-  // Sidebar stat elements
   const els = {
     cpuVal:    $("#cpuVal"),    cpuBar:    $("#cpuBar"),
     ramVal:    $("#ramVal"),    ramBar:    $("#ramBar"),
@@ -23,7 +22,6 @@
     starkVal:  $("#starkVal"),  safeVal:   $("#safeVal"),
   };
 
-  // Voice elements
   const voiceToggle  = $("#voiceToggle");
   const voiceStopBtn = $("#voiceStopBtn");
   const voiceSel     = $("#voiceSelect");
@@ -64,25 +62,18 @@
     return text;
   }
 
-  // ── Strip markdown/HTML for clean TTS ───────────────────────────────────
   function stripForSpeech(text) {
     if (!text) return "";
     let t = text;
-    // Remove code blocks
     t = t.replace(/```[\s\S]*?```/g, "");
-    // Remove inline code
     t = t.replace(/`[^`]+`/g, "");
-    // Remove markdown formatting
     t = t.replace(/\*\*(.+?)\*\*/g, "$1");
     t = t.replace(/\*(.+?)\*/g, "$1");
     t = t.replace(/#{1,6}\s*/g, "");
-    t = t.replace(/[>\-|]/g, "");      // Remove URLs but keep link text
+    t = t.replace(/[>\-|]/g, "");
     t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-    // Split on newlines before collapsing whitespace
     t = t.replace(/\n/g, " ");
-    // Collapse whitespace
     t = t.replace(/\s+/g, " ").trim();
-    // Limit length for TTS
     if (t.length > 2000) t = t.substring(0, 2000) + "... truncated for speech";
     return t;
   }
@@ -94,7 +85,6 @@
     clearSpeakingIndicator();
     const clean = stripForSpeech(text);
     if (!clean) return;
-    // Chrome bug: speech stops after ~15s. Split long text into chunks.
     const MAX_CHUNK = 200;
     const chunks = [];
     if (clean.length <= MAX_CHUNK) {
@@ -111,7 +101,6 @@
       }
       if (buf) chunks.push(buf);
     }
-    // Mark last bubble as speaking
     const lastBubble = messagesEl.querySelector(".message.assistant:last-child .bubble");
     let speakingEl = null;
     let chunkIdx = 0;
@@ -157,7 +146,6 @@
     if (!voiceSel) return;
     voiceSel.innerHTML = "";
     const voices = synth.getVoices();
-    // Prefer English voices, then all
     const english = voices.filter(v => v.lang.startsWith("en"));
     const others = voices.filter(v => !v.lang.startsWith("en"));
     const sorted = [...english, ...others];
@@ -170,7 +158,6 @@
       voiceSel.appendChild(opt);
     });
 
-    // Default: pick a good English voice
     const defaultIdx = [
       sorted.findIndex(v => v.name.includes("Google") && v.lang.startsWith("en")),
       sorted.findIndex(v => v.name.includes("Zira")),
@@ -185,13 +172,11 @@
 
   if (synth) {
     loadVoices();
-    // Chrome loads voices async
     if (synth.onvoiceschanged !== undefined) {
       synth.onvoiceschanged = loadVoices;
     }
   }
 
-  // Voice toggle
   if (voiceToggle) {
     voiceToggle.addEventListener("click", () => {
       voiceEnabled = !voiceEnabled;
@@ -201,16 +186,13 @@
         : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
       if (!voiceEnabled) stopSpeaking();
     });
-    // Set initial state
     voiceToggle.classList.add("active");
   }
 
-  // Stop button
   if (voiceStopBtn) {
     voiceStopBtn.addEventListener("click", stopSpeaking);
   }
 
-  // Voice selector
   if (voiceSel) {
     voiceSel.addEventListener("change", () => {
       const voices = synth.getVoices();
@@ -221,7 +203,6 @@
     });
   }
 
-  // Speed slider
   if (voiceSpeed) {
     voiceSpeed.addEventListener("input", () => {
       voiceRate = parseFloat(voiceSpeed.value);
@@ -388,7 +369,6 @@
       try {
         ws.send(JSON.stringify({ message: text }));
       } catch (e) {
-        // WebSocket send failed — fall back to REST
         doRestChat(text);
       }
     } else {
@@ -467,7 +447,6 @@
 
       modelBadge.textContent = s.model;
     } catch (e) {
-      // Silent fail for stats
     }
   }
 
@@ -542,12 +521,10 @@
   setInterval(fetchStats, 5000);
   inputEl.focus();
 
-  // Stop speech when navigating away
   window.addEventListener("beforeunload", () => {
     if (synth) synth.cancel();
   });
 
-  // Save/restore voice settings from localStorage
   try {
     const saved = JSON.parse(localStorage.getItem("friday_voice") || "{}");
     if (saved.enabled !== undefined) {
@@ -560,14 +537,12 @@
       if (voiceSpeedVal) voiceSpeedVal.textContent = voiceRate.toFixed(1) + "x";
     }
   } catch (e) { /* ignore */ }
-  // Persist on change
   const saveVoiceSettings = () => {
     try { localStorage.setItem("friday_voice", JSON.stringify({ enabled: voiceEnabled, rate: voiceRate })); } catch (e) {}
   };
   if (voiceToggle) voiceToggle.addEventListener("click", saveVoiceSettings);
   if (voiceSpeed) voiceSpeed.addEventListener("input", saveVoiceSettings);
 
-  // Hide voice section if speechSynthesis unavailable
   if (!synth) {
     const voiceSection = $("#voiceSection");
     if (voiceSection) voiceSection.style.display = "none";

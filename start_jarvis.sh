@@ -28,9 +28,6 @@ case "$MODE" in
     voice|-c|--continuous)
         python jarvis.py --continuous
         ;;
-    cyber|--cyber|--pentest)
-        python jarvis.py --cyber
-        ;;
     help|-h|--help)
         python jarvis.py --help
         ;;

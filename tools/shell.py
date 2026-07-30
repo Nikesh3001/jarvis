@@ -147,18 +147,19 @@ class ShellCommander:
         except SandboxError as e:
             return f"Sandbox blocked: {e}"
 
-        wrapper = rf"""import sys, json, builtins as _b
-SAFE = {json.dumps(["math","json","re","random","datetime","time","collections","itertools","functools","hashlib","uuid","decimal","fractions","statistics","enum","typing","dataclasses","copy","pprint","string","textwrap","difflib","base64","binascii","struct","array","queue","secrets"])}
-_orig = _b.__import__
+        safe_builtins = ["abs","all","any","bin","bool","bytes","callable","chr","complex","dict","dir","divmod","enumerate","filter","float","format","frozenset","hash","hex","id","int","isinstance","issubclass","iter","len","list","map","max","min","next","object","oct","ord","pow","print","range","repr","reversed","round","set","slice","sorted","str","sum","super","tuple","zip","True","False","None","Exception","ValueError","TypeError","KeyError","IndexError","AttributeError","StopIteration","RuntimeError","ZeroDivisionError","ArithmeticError","OverflowError","MemoryError"]
+        SAFE = ["math","json","re","random","datetime","time","collections","itertools","functools","hashlib","uuid","decimal","fractions","statistics","enum","typing","dataclasses","copy","pprint","string","textwrap","difflib","base64","binascii","struct","array","queue","secrets"]
+        wrapper = rf"""import sys, json
+_g = {{k: getattr(__builtins__, k) for k in {json.dumps(safe_builtins)}}}
+_g['__builtins__'] = _g
+SAFE = {json.dumps(SAFE)}
 def _safe_import(name, *a, **kw):
     base = name.split('.')[0]
     if base not in SAFE:
         raise ImportError(f"module '{{name}}' not in safe list")
-    return _orig(name, *a, **kw)
-_b.__import__ = _safe_import
-_b.type = None
-_b.open = None
-exec({json.dumps(code)})
+    return __import__(name, *a, **kw)
+_g['__import__'] = _safe_import
+exec({json.dumps(code)}, _g)
 """
         try:
             r = subprocess.run(

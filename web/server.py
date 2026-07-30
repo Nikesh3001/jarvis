@@ -1,7 +1,7 @@
 """FRIDAY Web Dashboard Server.
 
 Provides a browser-based UI for interacting with FRIDAY.
-Run with: python -m web.server --web
+Run with: python jarvis.py -w
 """
 import asyncio
 import hashlib
@@ -9,45 +9,60 @@ import hmac
 import json
 import os
 import sys
+import time
 import secrets
 import datetime
 import threading
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from core.ratelimit import check_rate
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from core.assistant import VERSION
 
-API_KEY = os.environ.get("FRIDAY_API_KEY") or ""
-_HMAC_SECRET = os.environ.get("FRIDAY_HMAC_SECRET", secrets.token_hex(32)).encode()
+API_KEY = os.environ.get("FRIDAY_API_KEY", "")
+if not API_KEY:
+    API_KEY = secrets.token_hex(16)
+    _AUTO_KEY = True
+else:
+    _AUTO_KEY = False
+
+_SESSION_TOKENS = {}
+_SESSION_TTL = 86400
+_COOKIE_NAME = "friday_session"
+_NOT_AUTH_REASON = "Authentication required."
 
 
-def _generate_csrf():
+def _generate_session():
     token = secrets.token_urlsafe(32)
-    sig = hmac.new(_HMAC_SECRET, token.encode(), hashlib.sha256).hexdigest()[:16]
-    return f"{token}.{sig}"
+    _SESSION_TOKENS[token] = time.time()
+    _cleanup_expired_sessions()
+    return token
 
 
-def _validate_csrf(token):
-    if not token or token.count(".") != 1:
+def _validate_session(token):
+    if not token or token not in _SESSION_TOKENS:
         return False
-    t, sig = token.split(".")
-    expected = hmac.new(_HMAC_SECRET, t.encode(), hashlib.sha256).hexdigest()[:16]
-    return hmac.compare_digest(sig, expected)
-_CORS_ORIGINS_STR = os.environ.get("FRIDAY_CORS_ORIGINS",
-                                     "http://127.0.0.1:8080,http://localhost:8080")
+    ts = _SESSION_TOKENS.get(token)
+    if not ts:
+        return False
+    if time.time() - ts > _SESSION_TTL:
+        del _SESSION_TOKENS[token]
+        return False
+    return True
 
 
-def _parse_cors_origins(raw):
-    origins = [o.strip() for o in raw.split(",") if o.strip()]
-    return [o for o in origins if o.startswith("http://") or o.startswith("https://")]
+def _cleanup_expired_sessions():
+    now = time.time()
+    expired = [k for k, v in list(_SESSION_TOKENS.items()) if now - v > _SESSION_TTL]
+    for k in expired:
+        _SESSION_TOKENS.pop(k, None)
 
 
 def _verify_api_key(key):
@@ -58,19 +73,43 @@ def _verify_api_key(key):
     return hmac.compare_digest(key, API_KEY)
 
 
-_NOT_AUTH_REASON = "Authentication required. Set FRIDAY_API_KEY env var."
+def _get_auth_key(request):
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    cookie = request.cookies.get(_COOKIE_NAME, "")
+    if cookie and _validate_session(cookie):
+        return API_KEY
+    return ""
 
 
 async def _verify_request(request):
     if not API_KEY:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NOT_AUTH_REASON)
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-    else:
-        token = request.query_params.get("api_key", "")
-    if not _verify_api_key(token):
+    key = _get_auth_key(request)
+    if not _verify_api_key(key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NOT_AUTH_REASON)
+
+
+def _set_session_cookie(response):
+    session = _generate_session()
+    response.set_cookie(
+        key=_COOKIE_NAME,
+        value=session,
+        httponly=True,
+        samesite="strict",
+        max_age=86400,
+        secure=False,
+    )
+
+
+_CORS_ORIGINS_STR = os.environ.get("FRIDAY_CORS_ORIGINS",
+                                     "http://127.0.0.1:8080,http://localhost:8080")
+
+
+def _parse_cors_origins(raw):
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    return [o for o in origins if o.startswith("http://") or o.startswith("https://")]
 
 
 app = FastAPI(title="FRIDAY Dashboard", docs_url=None, redoc_url=None)
@@ -78,7 +117,7 @@ app = FastAPI(title="FRIDAY Dashboard", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_parse_cors_origins(_CORS_ORIGINS_STR),
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["content-type", "authorization"],
 )
@@ -98,6 +137,7 @@ async def security_headers(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
 
 
@@ -130,7 +170,15 @@ def is_valid_origin(origin):
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html_path = Path(__file__).parent / "static" / "index.html"
-    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+    html = html_path.read_text(encoding="utf-8")
+    response = HTMLResponse(html)
+    _set_session_cookie(response)
+    return response
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return HTMLResponse("")
 
 
 @app.get("/api/status")
@@ -220,9 +268,8 @@ _MAX_MESSAGE_LENGTH = 10000
 @app.post("/api/chat")
 async def api_chat(body: dict, request: Request):
     message = body.get("message", "").strip()
-    auth_header = request.headers.get("Authorization", "")
-    auth_key = auth_header[7:] if auth_header.startswith("Bearer ") else ""
-    if not _verify_api_key(auth_key):
+    key = _get_auth_key(request)
+    if not _verify_api_key(key):
         return {"ok": False, "error": _NOT_AUTH_REASON}
     if not message:
         return {"ok": False, "error": "Empty message"}
@@ -232,21 +279,22 @@ async def api_chat(body: dict, request: Request):
         return {"ok": False, "error": "Rate limit exceeded. Please wait before sending more messages."}
     try:
         asst = get_assistant()
-        asst.conversation.append({"role": "user", "content": message})
-        result_text = asst.brain.chat_with_tools(asst.conversation)
-        asst._trim_conversation()
-        asst._save_conversation()
-        asst._post_process(message)
+        with asst._conversation_lock:
+            asst.conversation.append({"role": "user", "content": message})
+            result_text = asst.brain.chat_with_tools(asst.conversation)
+            asst._trim_conversation()
+            asst._save_conversation()
+            asst._post_process(message)
         return {"ok": True, "response": result_text}
     except Exception:
         return {"ok": False, "error": "Chat request failed"}
 
 
 @app.post("/api/command")
-async def api_command(body: dict):
+async def api_command(body: dict, request: Request):
     command = body.get("command", "").strip()
-    auth_key = body.get("api_key", "")
-    if not _verify_api_key(auth_key):
+    key = _get_auth_key(request)
+    if not _verify_api_key(key):
         return {"ok": False, "error": _NOT_AUTH_REASON}
     if not command:
         return {"ok": False, "error": "Empty command"}
@@ -265,10 +313,10 @@ async def api_command(body: dict):
 
 
 @app.post("/api/model")
-async def api_model(body: dict):
+async def api_model(body: dict, request: Request):
     model = body.get("model", "").strip()
-    auth_key = body.get("api_key", "")
-    if not _verify_api_key(auth_key):
+    key = _get_auth_key(request)
+    if not _verify_api_key(key):
         return {"ok": False, "error": _NOT_AUTH_REASON}
     if not model:
         return {"ok": False, "error": "No model specified"}
@@ -305,11 +353,22 @@ async def ws_chat(websocket: WebSocket):
         await websocket.close(code=4001, reason="Origin not allowed")
         return
     await websocket.accept()
+    ws_api_key = ""
+    cookie_header = websocket.headers.get("cookie", "")
+    if not ws_api_key and cookie_header:
+        for part in cookie_header.split(";"):
+            part = part.strip()
+            if part.startswith(f"{_COOKIE_NAME}="):
+                token = part[len(_COOKIE_NAME) + 1:]
+                if _validate_session(token):
+                    ws_api_key = API_KEY
+                break
     try:
         while True:
             data = await websocket.receive_text()
             payload = json.loads(data)
-            ws_api_key = payload.get("api_key", "")
+            if not ws_api_key:
+                ws_api_key = payload.get("api_key", "")
             if not _verify_api_key(ws_api_key):
                 await websocket.send_json({"type": "error", "content": _NOT_AUTH_REASON})
                 await websocket.close(code=4001)
@@ -324,7 +383,8 @@ async def ws_chat(websocket: WebSocket):
                 continue
 
             asst = get_assistant()
-            asst.conversation.append({"role": "user", "content": message})
+            with asst._conversation_lock:
+                asst.conversation.append({"role": "user", "content": message})
 
             cmd_lower = message.strip().lower()
             if any(w in cmd_lower for w in ["list models", "available models", "switch model", "change model"]):
@@ -357,28 +417,40 @@ async def ws_chat(websocket: WebSocket):
                 except Exception:
                     pass
 
+            cancelled = False
+
             def _run_chat():
                 try:
                     asst.brain.chat_with_tools(asst.conversation, on_speak=on_token)
                 except Exception as exc:
-                    collected.clear()
-                    collected.append(f"Error: {exc}")
+                    if not cancelled:
+                        collected.clear()
+                        collected.append(f"Error: {exc}")
                 finally:
-                    loop.call_soon_threadsafe(token_queue.put_nowait, None)
+                    try:
+                        loop.call_soon_threadsafe(token_queue.put_nowait, None)
+                    except RuntimeError:
+                        pass
 
-            await loop.run_in_executor(None, _run_chat)
+            chat_task = loop.run_in_executor(None, _run_chat)
 
             while True:
-                token = await token_queue.get()
+                try:
+                    token = await asyncio.wait_for(token_queue.get(), timeout=120)
+                except asyncio.TimeoutError:
+                    cancelled = True
+                    await websocket.send_json({"type": "error", "content": "Response timed out."})
+                    break
                 if token is None:
                     break
                 await websocket.send_json({"type": "token", "content": token})
 
             full_response = "".join(collected) if collected else "(no response)"
             await websocket.send_json({"type": "done", "content": full_response})
-            asst._trim_conversation()
-            asst._save_conversation()
-            asst._post_process(message)
+            with asst._conversation_lock:
+                asst._trim_conversation()
+                asst._save_conversation()
+                asst._post_process(message)
 
     except WebSocketDisconnect:
         pass
@@ -397,7 +469,11 @@ if static_dir.exists():
 def main():
     import uvicorn
     port = int(os.environ.get("FRIDAY_PORT", 8080))
-    print(f"\n  FRIDAY Dashboard starting on http://localhost:{port}\n")
+    if _AUTO_KEY:
+        print(f"\n  FRIDAY Dashboard starting on http://localhost:{port}")
+        print(f"  API Key: {API_KEY} (auto-generated)\n")
+    else:
+        print(f"\n  FRIDAY Dashboard starting on http://localhost:{port}\n")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
 
 

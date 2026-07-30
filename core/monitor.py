@@ -52,6 +52,8 @@ class ProactiveMonitor:
                 return
 
     def _check_resources(self):
+        if self._psutil is None:
+            return
         try:
             mem = self._psutil.virtual_memory()
             if mem.percent > 90:
@@ -105,6 +107,8 @@ class ProactiveMonitor:
         return "Recent system events:\n" + "\n".join(lines)
 
     def get_status(self):
+        if self._psutil is None:
+            return "Monitor status: psutil not available"
         try:
             mem = self._psutil.virtual_memory()
             cpu = self._psutil.cpu_percent(interval=0)
