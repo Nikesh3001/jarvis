@@ -1,6 +1,6 @@
-# JARVIS / FRIDAY — AI Terminal Assistant & Cybersecurity Platform
+# JARVIS / FRIDAY — AI Terminal Assistant  Platform
 
-A dual-personality AI assistant with full system control, cybersecurity toolkit, multi-agent orchestration, IDE capabilities, and web dashboard. Powered by **Groq** (cloud) or **Ollama** (local).
+A Dual-personality AI assistant with full system control, multi-agent orchestration, IDE capabilities, and web dashboard. Powered by **Groq** (cloud) or **Ollama** (local).
 
 ## Features
 
@@ -29,7 +29,6 @@ A dual-personality AI assistant with full system control, cybersecurity toolkit,
 - **Authentication & Authorization**: API-key auth for web endpoints with role-based access control
 - **Response Safety**: Content filtering and safety checks on AI responses
 - **Response Cache**: Smart caching of AI responses for reduced latency
-- **Cybersecurity Console**: Standalone pentest toolkit with 30+ tools
 - **Vision Engine**: Image analysis and OCR capabilities
 - **Web Artifacts**: Generate and serve interactive web content
 - **Web Testing**: Automated web testing and validation tools
@@ -37,23 +36,6 @@ A dual-personality AI assistant with full system control, cybersecurity toolkit,
 - **GIF Builder**: Create animated GIFs programmatically
 - **MCP Builder**: Model Context Protocol server builder
 - **Algorithm Generator**: Generate and optimize algorithms with AI
-
-### Cybersecurity Console
-
-Access via `python jarvis.py -cyber` or web UI at `http://localhost:8081`.
-
-| Category | Tools |
-|----------|-------|
-| **Recon** | nmap, shodan, dns, subdomain, whois, banner grab, traceroute |
-| **Exploit** | nikto, sqlmap, hydra, gobuster, ffuf |
-| **Web** | Security headers, SSL/TLS check, Jina web reader, semantic search |
-| **System** | Firewall check, port scan, services, listeners, updates, best-practices audit |
-| **Network** | SSH (key-based), file hashing, hash identification |
-| **Metasploit** | msfconsole, msfvenom (gated behind safe-mode), .rc scripts |
-| **Dev** | Git, Python, pip (all sandboxed) |
-| **Internet** | YouTube transcripts/search, GitHub repo/issue viewer, RSS feeds, Jina Reader |
-
-All external target inputs (nmap, hydra, gobuster, ffuf, nikto, SQLMap) are validated through SSRF protection — internal/private addresses are blocked by default.
 
 ## Requirements
 
