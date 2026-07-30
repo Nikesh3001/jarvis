@@ -44,7 +44,7 @@ from tools.security import SecurityTool
 from tools.internet import InternetTools
 from core.ssrf import validate_url, is_ssrf_blocked
 
-VERSION = "3.5.0"
+VERSION = "5.0.0"
 
 CYBER_BANNER = CYBER_BANNER_ASCII = r"""
   +=========================================================+
