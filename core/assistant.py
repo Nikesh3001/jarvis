@@ -1,4 +1,4 @@
-import os, sys, time, datetime, json, threading, random, base64, hashlib, shutil
+import os, sys, time, datetime, json, threading, random, base64, hashlib, shutil, re
 from pathlib import Path
 
 from core.speech import SpeechEngine, STARK_QUOTES
@@ -166,6 +166,7 @@ class Assistant:
         self._mcp_clients = []
         self._languages = None
         self._internet = None
+        self._visualize = None
 
         self._register_core_tools()
         self._register_web_tools()
@@ -187,6 +188,7 @@ class Assistant:
         self._register_code_index()
         self._register_languages()
         self._register_internet()
+        self._register_visualize()
         self._register_plugins()
 
         self.governor = ResourceGovernor(self)
@@ -464,6 +466,18 @@ class Assistant:
     def _register_internet(self):
         self._lazy_internet()
 
+    def _lazy_visualize(self):
+        if self._visualize is None:
+            from tools.visualize import VisualizeTools
+            self._visualize = VisualizeTools()
+            self.brain.register_tools(
+                self._visualize.get_tool_definitions(),
+                self._visualize.get_handler,
+            )
+
+    def _register_visualize(self):
+        self._lazy_visualize()
+
     def _lazy_plugins(self):
         if self._plugin_manager is None:
             from core.plugin_manager import PluginManager
@@ -725,6 +739,10 @@ class Assistant:
             self._list_models()
             return True
 
+        if any(w in cmd_lower for w in ["reduce ram", "free memory", "ram usage", "optimize ram", "clear memory", "too slow", "reduce memory"]):
+            self._optimize_ram()
+            return True
+
         if any(w in cmd_lower for w in ["save", "save chat", "save history", "save conversation"]):
             self._save_conversation()
             self.speech.speak("Conversation saved.")
@@ -828,11 +846,29 @@ class Assistant:
         self._process_with_ai(cmd)
         return True
 
-    def _process_with_ai(self, command):
-        self.commands_run += 1
-        self.conversation.append({"role": "user", "content": command})
+    def _sanitize_input(self, text):
+        stripped = text.strip()
+        if not stripped:
+            return None
+        if len(stripped) > 10000:
+            print("  [SECURITY] Input exceeds maximum length (10000 chars)")
+            return None
+        null_byte = chr(0)
+        if null_byte in stripped:
+            print("  [SECURITY] Null bytes detected in input, rejected")
+            return None
+        return stripped
 
-        model = self.brain.select_model(command)
+    def _process_with_ai(self, command):
+        safe = self._sanitize_input(command)
+        if not safe:
+            print("  [FRIDAY] I didn't receive valid input. Please try again.")
+            return
+
+        self.commands_run += 1
+        self.conversation.append({"role": "user", "content": safe})
+
+        model = self.brain.select_model(safe)
         self.brain.current_model = model
         model_name = model.split(":")[0] if ":" in model else model
         print(f"  [BRAIN: {model_name}] ", end="", flush=True)
@@ -844,7 +880,7 @@ class Assistant:
         self.brain.chat_with_tools(self.conversation, on_speak=on_speak)
         self._trim_conversation()
         self._save_conversation()
-        self._post_process(command)
+        self._post_process(safe)
 
     def _post_process(self, command):
         if self._memory is not None:
@@ -870,6 +906,18 @@ class Assistant:
         print("\n  Available AI Models:")
         for m in models:
             print(f"    {m}")
+
+    def _optimize_ram(self):
+        import gc, psutil
+        freed = gc.collect()
+        old_pct = psutil.virtual_memory().percent
+        self._trim_conversation(max_messages=5)
+        freed2 = gc.collect()
+        new_pct = psutil.virtual_memory().percent
+        saved = old_pct - new_pct
+        msg = f"Freed {freed + freed2} garbage objects. RAM: {old_pct}% to {new_pct}%. Conversation trimmed to last 5 messages."
+        self.speech.speak(msg if saved > 0 else "Freed garbage objects. RAM usage unchanged.")
+        print(f"  [RAM] {msg}")
 
     def _suit_status(self):
         uptime = datetime.datetime.now() - self.session_start

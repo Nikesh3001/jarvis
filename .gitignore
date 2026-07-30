@@ -41,3 +41,31 @@ test_server.py
 
 # Embedded git repos
 tools/bin/nikto
+
+# Secrets
+.credentials/
+.csrf_secret
+.vault_key
+config.json
+.env
+
+# Flutter/Dart artifacts (not part of core JARVIS)
+.dart_tool/
+.metadata
+android/
+ios/
+lib/
+linux/
+macos/
+windows/
+*.iml
+pubspec.lock
+pubspec.yaml
+analysis_options.yaml
+
+# Test/build artifacts
+final_test.py
+test_code_interpreter.py
+test/
+new_folder/
+JARVIS_REPORT.md

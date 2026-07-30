@@ -321,6 +321,26 @@ async def ws_chat(websocket: WebSocket):
             asst = get_assistant()
             asst.conversation.append({"role": "user", "content": message})
 
+            cmd_lower = message.strip().lower()
+            if any(w in cmd_lower for w in ["list models", "available models", "switch model", "change model"]):
+                models = asst.brain.list_models()
+                if isinstance(models, list) and models:
+                    reply = "Available models: " + ", ".join(models[:10])
+                else:
+                    reply = "No models available."
+                await websocket.send_json({"type": "done", "content": reply})
+                continue
+
+            if any(w in cmd_lower for w in ["reduce ram", "free memory", "ram usage", "optimize ram", "clear memory", "too slow", "reduce memory"]):
+                import gc, psutil
+                freed = gc.collect()
+                asst._trim_conversation(max_messages=5)
+                freed2 = gc.collect()
+                pct = psutil.virtual_memory().percent
+                reply = f"Freed {freed + freed2} garbage objects. Conversation trimmed. Current RAM: {pct}%."
+                await websocket.send_json({"type": "done", "content": reply})
+                continue
+
             collected = []
             token_queue = asyncio.Queue()
             loop = asyncio.get_running_loop()

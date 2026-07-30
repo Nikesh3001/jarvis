@@ -127,7 +127,11 @@ class SecurityTool:
     # ── Existing tools (preserved) ────────────────────────────────────
 
     def check_firewall(self):
+        from core.platform_utils import get_firewall_status
         try:
+            status = get_firewall_status()
+            if status and status != "Firewall status unavailable":
+                return f"Firewall: {status}"
             if is_windows():
                 r = subprocess.run(
                     ["powershell", "-NoProfile", "-Command",
@@ -139,8 +143,8 @@ class SecurityTool:
                     data = [data]
                 lines = []
                 for p in data:
-                    status = "ON" if p.get("Enabled") else "OFF"
-                    lines.append(f"  {p['Name']}: {status}")
+                    status2 = "ON" if p.get("Enabled") else "OFF"
+                    lines.append(f"  {p['Name']}: {status2}")
                 return "Firewall status:\n" + "\n".join(lines)
             elif is_macos():
                 r = subprocess.run(["/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate"],
@@ -222,7 +226,11 @@ class SecurityTool:
             return "Listener check failed"
 
     def check_security_updates(self):
+        from core.platform_utils import get_security_updates
         try:
+            updates = get_security_updates()
+            if updates:
+                return "Recent security updates:\n" + "\n".join(f"  {u}" for u in updates)
             if is_windows():
                 r = subprocess.run(
                     ["powershell", "-NoProfile", "-Command",
@@ -384,19 +392,10 @@ class SecurityTool:
 
     @staticmethod
     def _find_nmap():
-        """Locate nmap binary, including WSL fallback."""
-        found = shutil.which("nmap")
+        from core.platform_utils import get_nmap_path
+        found = get_nmap_path()
         if found:
             return found
-        if is_windows():
-            candidates = [
-                r"C:\Program Files (x86)\Nmap\nmap.exe",
-                r"C:\Program Files\Nmap\nmap.exe",
-                r"C:\nmap\nmap.exe",
-            ]
-            for path in candidates:
-                if os.path.isfile(path):
-                    return path
         try:
             if subprocess.call(["wsl", "--", "which", "nmap"],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10) == 0:

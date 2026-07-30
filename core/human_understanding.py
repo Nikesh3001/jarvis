@@ -393,7 +393,7 @@ def get_tools_for_intent(analysis: Dict) -> List[str]:
         "security": ["check_firewall", "check_open_ports", "check_listeners", "check_security_updates", "security_best_practices"],
         "research_deep": ["deep_research", "research_topic", "design_architecture"],
         "ocr": ["ocr_image", "read_spreadsheet"],
-        "languages": ["detect_language", "detect_project", "lint_file", "format_file", "scaffold_project", "package_install", "package_list", "run_file"],
+        "language_tools": ["detect_language", "detect_project", "lint_file", "format_file", "scaffold_project", "package_install", "package_list", "run_file"],
         "task_orchestrator": ["create_plan", "execute_step"],
         "vision": [],
         "language_tools": ["detect_language", "detect_project", "lint_file", "format_file", "scaffold_project", "package_install", "package_list", "run_file"],

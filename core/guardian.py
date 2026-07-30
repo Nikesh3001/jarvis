@@ -582,7 +582,9 @@ class ConfigGuard:
     @staticmethod
     def has_plaintext_keys(config: Dict) -> List[str]:
         findings = []
-        for provider, settings in config.get("providers", {}).items() if isinstance(config, dict) else []:
+        if not isinstance(config, dict):
+            return findings
+        for provider, settings in config.get("providers", {}).items():
             if isinstance(settings, dict):
                 for key, value in settings.items():
                     if "key" in key.lower() or "secret" in key.lower() or "token" in key.lower():

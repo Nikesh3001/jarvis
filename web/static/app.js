@@ -520,6 +520,22 @@
 
   sendBtn.addEventListener("click", sendMessage);
 
+  // ── Quick Action Buttons ────────────────────────────────────────────────
+  document.querySelectorAll(".tool-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const prompt = btn.dataset.prompt || "";
+      const text = btn.dataset.text || "";
+      if (prompt) {
+        inputEl.value = prompt + " ";
+        inputEl.focus();
+        inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+      } else if (text) {
+        inputEl.value = text;
+        sendMessage();
+      }
+    });
+  });
+
   // ── Init ────────────────────────────────────────────────────────────────
   connectWS();
   fetchStats();

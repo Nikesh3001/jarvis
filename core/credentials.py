@@ -1,11 +1,9 @@
-"""Secure credential management with hardware-backed encryption fallbacks."""
-
 import os
 import json
 import base64
 import hashlib
 import sys
-import platform
+import platform as _platform
 import secrets
 from pathlib import Path
 from typing import Optional, Dict
@@ -17,14 +15,6 @@ MASTER_KEY_FILE = CRED_DIR / ".master"
 
 
 class CredentialVault:
-    """Encrypted credential storage with platform-key derivation.
-
-    Uses:
-    1. Windows: DPAPI (CryptProtectData) via ctypes
-    2. macOS: Keychain via subprocess
-    3. Linux: systemd secret-tool or encrypted file with derived key
-    """
-
     def __init__(self):
         self._vault: Dict[str, str] = {}
         self._unlocked = False
@@ -35,101 +25,45 @@ class CredentialVault:
             except Exception:
                 self._vault = {}
 
-    def _derive_machine_key(self) -> bytes:
-        if sys.platform == "win32":
-            try:
-                import ctypes
-                from ctypes import wintypes
-                crypt32 = ctypes.windll.crypt32
-                data = secrets.token_bytes(32)
-                data_in = (ctypes.c_char * len(data))(*data)
-                p_data_in = ctypes.c_char_p(data)
-                p_data_out = ctypes.c_char_p()
-                cb_out = wintypes.DWORD(0)
-                if crypt32.CryptProtectData(
-                    ctypes.byref(p_data_in), None, None,
-                    None, None, 0,
-                    ctypes.byref(p_data_out), ctypes.byref(cb_out)
-                ):
-                    buf = (ctypes.c_char * cb_out.value).from_address(ctypes.addressof(p_data_out))
-                    raw = bytes(buf)
-                    ctypes.windll.kernel32.LocalFree(p_data_out)
-                    return hashlib.sha256(raw).digest()
-            except Exception:
-                pass
-        machine_id = self._get_machine_id()
-        return hashlib.sha256(machine_id.encode()).digest()
-
     def _get_machine_id(self) -> str:
         parts = []
+        hostname = _platform.node() or "unknown"
+        user_home = os.path.expanduser("~")
+        parts.append(hostname)
+        parts.append(user_home)
+        try:
+            parts.append(str(os.stat(user_home).st_ino))
+        except Exception:
+            pass
+        for p in ["/etc/machine-id", "/var/lib/dbus/machine-id"]:
+            try:
+                parts.append(Path(p).read_text().strip())
+            except Exception:
+                pass
         if sys.platform == "win32":
             try:
-                import subprocess
-                r = subprocess.run(
+                r = __import__('subprocess').run(
                     ["powershell", "-NoProfile", "-Command",
                      "(Get-CimInstance Win32_ComputerSystemProduct).UUID"],
                     capture_output=True, text=True, timeout=5
                 )
-                uuid = r.stdout.strip()
-                if uuid:
-                    parts.append(uuid)
-            except Exception:
-                try:
-                    r = subprocess.run(
-                        ["wmic", "csproduct", "get", "uuid"],
-                        capture_output=True, text=True, timeout=5
-                    )
-                    for line in r.stdout.splitlines():
-                        line = line.strip()
-                        if line and line != "UUID":
-                            parts.append(line)
-                except Exception:
-                    pass
-        parts.append(os.path.expanduser("~"))
-        parts.append(platform.node() or "unknown")
-        return "|".join(parts)
-
-    def _encrypt(self, plaintext: str) -> str:
-        if sys.platform == "win32":
-            try:
-                import ctypes
-                import ctypes.wintypes
-                crypt32 = ctypes.windll.crypt32
-                data = plaintext.encode("utf-16-le")
-                data_in = (ctypes.c_char * len(data))(*data)
-                data_out = ctypes.c_char_p()
-                cb_out = ctypes.wintypes.DWORD(0)
-                if crypt32.CryptProtectData(
-                    None, None, data_in, None, None, 0,
-                    ctypes.byref(data_out), ctypes.byref(cb_out)
-                ):
-                    buf = ctypes.create_string_buffer(cb_out.value)
-                    return base64.b64encode(buf.raw).decode()
+                if r.stdout.strip():
+                    parts.append(r.stdout.strip())
             except Exception:
                 pass
+        return "|".join(parts)
+
+    def _derive_machine_key(self) -> bytes:
+        machine_id = self._get_machine_id()
+        return hashlib.sha256(machine_id.encode()).digest()
+
+    def _encrypt(self, plaintext: str) -> str:
         from cryptography.fernet import Fernet
         key = base64.urlsafe_b64encode(self._derive_machine_key()[:32])
         f = Fernet(key)
         return f.encrypt(plaintext.encode()).decode()
 
     def _decrypt(self, ciphertext: str) -> str:
-        if sys.platform == "win32":
-            try:
-                import ctypes
-                import ctypes.wintypes
-                crypt32 = ctypes.windll.crypt32
-                raw = base64.b64decode(ciphertext)
-                data_in = ctypes.create_string_buffer(raw, len(raw))
-                data_out = ctypes.c_char_p()
-                cb_out = ctypes.wintypes.DWORD(0)
-                if crypt32.CryptUnprotectData(
-                    None, None, data_in, None, None, 0,
-                    ctypes.byref(data_out), ctypes.byref(cb_out)
-                ):
-                    if data_out.value:
-                        return ctypes.create_string_buffer(data_out.value).raw.decode("utf-16-le")
-            except Exception:
-                pass
         try:
             from cryptography.fernet import Fernet
             key = base64.urlsafe_b64encode(self._derive_machine_key()[:32])
@@ -142,6 +76,7 @@ class CredentialVault:
         try:
             encrypted = self._encrypt(value)
             self._vault[key] = encrypted
+            self._flush()
             return True
         except Exception:
             return False

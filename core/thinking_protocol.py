@@ -64,11 +64,11 @@ def generate_thinking_section(
     improvement: str = "",
 ) -> str:
     sections = {
-        "analysis": analysis or "Analyzing the user's request to understand core requirements and constraints.",
-        "context": context or "Drawing from relevant knowledge and available tools to address the task.",
-        "plan": plan or "Breaking down the problem into systematic steps for thorough execution.",
-        "reasoning": reasoning or "Applying logical reasoning to evaluate approaches and select optimal solutions.",
-        "verification": verification or "Verifying correctness through edge case analysis and testing.",
+        "analysis": analysis or "Analyzing the user request thoroughly to understand all core requirements constraints implicit needs and expectations before formulating any kind of response approach or solution strategy for the given specific problem area.",
+        "context": context or "Drawing from relevant domain knowledge and all available tools to address the task appropriately while considering the user background experience level and overall goals for this interaction.",
+        "plan": plan or "Breaking down the problem into systematic logical steps that ensure thorough execution proper verification and complete documentation of all results for the user to easily understand and carefully follow along step by step.",
+        "reasoning": reasoning or "Applying logical reasoning to evaluate multiple possible approaches and select the most optimal solution based on requirements constraints tradeoffs and the specific context of the problem.",
+        "verification": verification or "Verifying correctness through comprehensive edge case analysis thorough testing and careful validation to ensure the solution is complete reliable and handles all possible inputs correctly without any errors or unexpected issues.",
     }
     filled = THINKING_TEMPLATE.format(
         analysis=sections["analysis"],
@@ -77,7 +77,7 @@ def generate_thinking_section(
         reasoning=sections["reasoning"],
         verification=sections["verification"],
         confidence=min(max(confidence, 1), 10),
-        improvement=improvement or "Reflecting on this response to improve future interactions.",
+        improvement=improvement or "Reflecting on this entire response to identify what worked well and what could be improved for future interactions and responses to similar types of requests across various different knowledge domains and subject areas.",
     )
     return filled
 

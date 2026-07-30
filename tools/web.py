@@ -7,6 +7,7 @@ from core.ssrf import validate_url, safe_httpx_get
 class WebTools:
     def __init__(self):
         self._ddgs = None
+        self._gs = None
         self._httpx = None
         self._client = None
 
@@ -16,9 +17,19 @@ class WebTools:
             try:
                 from ddgs import DDGS
             except ImportError:
-                from duckduckgo_search import DDGS
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*renamed to `ddgs`.*")
+                    from duckduckgo_search import DDGS
             self._ddgs = DDGS
         return self._ddgs
+
+    @property
+    def gs(self):
+        if self._gs is None:
+            from googlesearch import search
+            self._gs = search
+        return self._gs
 
     @property
     def httpx(self):
@@ -51,6 +62,16 @@ class WebTools:
             return "Search results:\n" + "\n\n".join(lines)
         except Exception as e:
             return "Search failed"
+
+    def osint_search(self, query, max_results=5):
+        try:
+            urls = list(self.gs(query, num_results=max_results))
+            if not urls:
+                return "No OSINT results found."
+            lines = [f"{i+1}. {url}" for i, url in enumerate(urls)]
+            return "OSINT search results:\n" + "\n".join(lines)
+        except Exception as e:
+            return f"OSINT search failed"
 
     def fetch(self, url):
         try:
@@ -92,11 +113,13 @@ class WebTools:
         return [
             {"type": "function", "function": {"name": "web_search", "description": "Search the internet using DuckDuckGo for current information, news, facts, or answers to questions. Use this for any query that needs up-to-date, real-time, or web-based information.", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "The search query or question to look up on the web"}, "max_results": {"type": "integer", "description": "Number of search results to return (1-10)", "default": 5}}, "required": ["query"]}}},
             {"type": "function", "function": {"name": "web_fetch", "description": "Fetch and extract readable text content from a URL. Returns the page title and main article text stripped of HTML markup. Use this to read articles, documentation, or any web page content.", "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "The full URL (including https://) of the web page to fetch"}}, "required": ["url"]}}},
+            {"type": "function", "function": {"name": "web_osint_search", "description": "Deep OSINT-focused search using Google for comprehensive, broad internet coverage. Use this when DuckDuckGo misses results or you need maximum coverage for research, reconnaissance, or finding obscure information.", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "The search query"}, "max_results": {"type": "integer", "description": "Number of results (1-20)", "default": 5}}, "required": ["query"]}}},
         ]
 
     def get_handler(self, name):
         handlers = {
             "web_search": self.search,
             "web_fetch": self.fetch,
+            "web_osint_search": self.osint_search,
         }
         return handlers.get(name)

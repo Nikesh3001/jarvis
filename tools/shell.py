@@ -18,7 +18,7 @@ SAFE_COMMANDS_WINDOWS = {
     "whoami", "hostname", "ver", "systeminfo",
     "netstat", "ipconfig", "ping", "tracert", "nslookup",
     "date", "time", "tasklist",
-    "cls", "help", "calc", "notepad", "mspaint",
+    "cls", "help",
     "copy", "xcopy", "robocopy", "move", "mkdir", "rmdir",
     "sort", "tree", "fc",
 }
@@ -26,7 +26,7 @@ SAFE_COMMANDS_WINDOWS = {
 SAFE_COMMANDS_UNIX = {
     "echo", "ls", "cat", "more", "less", "head", "tail",
     "grep", "find", "whereis", "which",
-    "whoami", "hostname", "uname",
+    "whoami", "hostname", "uname", "arch",
     "netstat", "ifconfig", "ping", "traceroute", "nslookup", "dig",
     "date", "time", "ps", "top", "htop",
     "clear", "pwd", "cal",
@@ -34,39 +34,36 @@ SAFE_COMMANDS_UNIX = {
     "sort", "tree", "diff",
 }
 
-ALLOWED_CHAR_PATTERN = re.compile(r'^[a-zA-Z0-9_\-./\\:@%+,=~ ]+$')
+SAFE_COMMANDS_MACOS = SAFE_COMMANDS_UNIX | {"sw_vers", "system_profiler", "defaults", "diskutil"}
+
+ALLOWED_CHAR_PATTERN = re.compile(r'^[a-zA-Z0-9_\-./:@%+,=~ ]+$')
 
 
 def _get_allowed():
     if is_windows():
         return SAFE_COMMANDS_WINDOWS
+    if is_macos():
+        return SAFE_COMMANDS_MACOS
     return SAFE_COMMANDS_UNIX
 
 
 def _check_command_safety(command):
     if not command or not command.strip():
         raise PermissionError("Empty command")
-
     if BLOCKED_CHAINING.search(command):
         raise PermissionError("Command chaining operators are blocked")
-
     if BLOCKED_REDIRECT.search(command):
         raise PermissionError("Output redirection to system paths blocked")
-
     parts = shlex.split(command)
     if not parts:
         raise PermissionError("Empty command")
-
     cmd_base = os.path.basename(parts[0].lower())
     allowed = _get_allowed()
-
-    if cmd_base not in allowed and cmd_base not in ("curl", "wget"):
+    if cmd_base not in allowed:
         raise PermissionError(f"Command '{cmd_base}' is not in the allowed list")
-
     for p in parts:
         if p.lower() in ("sudo", "runas", "doas", "pkexec"):
             raise PermissionError("Privilege escalation commands are blocked")
-
     return parts
 
 
@@ -91,25 +88,25 @@ class ShellCommander:
             return "Rate limit exceeded. Please wait before running more commands."
         try:
             parts = _check_command_safety(command)
-            cmd_base = os.path.basename(parts[0].lower())
-
-            if cmd_base in ("calc", "notepad", "mspaint", "help"):
-                subprocess.Popen(parts, shell=True)
-                return f"Launched: {command}"
-
             if is_windows():
                 return self._execute(["cmd", "/c", command], timeout)
-            else:
-                return self._execute(parts, timeout)
+            if is_macos():
+                return self._execute(["zsh", "-c", command], timeout)
+            return self._execute(parts, timeout)
         except PermissionError as e:
             return str(e)
+
+    def run_shell(self, command, timeout=60):
+        if is_windows():
+            return self._run_powershell(command, timeout)
+        if is_macos():
+            return self._run_zsh(command, timeout)
+        return self._run_bash(command, timeout)
 
     def _run_powershell(self, command, timeout=60):
         try:
             _check_command_safety(command)
-            return self._execute(
-                ["powershell", "-NoProfile", "-Command", command], timeout
-            )
+            return self._execute(["powershell", "-NoProfile", "-Command", command], timeout)
         except PermissionError as e:
             return str(e)
 
@@ -120,15 +117,25 @@ class ShellCommander:
         except PermissionError as e:
             return str(e)
 
+    def _run_zsh(self, command, timeout=60):
+        try:
+            _check_command_safety(command)
+            return self._execute(["zsh", "-c", command], timeout)
+        except PermissionError as e:
+            return str(e)
+
     def run_powershell(self, command, timeout=60):
         if not is_windows():
             return "PowerShell is only available on Windows."
         return self._run_powershell(command, timeout)
 
-    def run_shell(self, command, timeout=60):
-        if is_windows():
-            return self._run_powershell(command, timeout)
+    def run_bash(self, command, timeout=60):
         return self._run_bash(command, timeout)
+
+    def run_zsh(self, command, timeout=60):
+        if not is_macos():
+            return "Zsh is recommended on macOS."
+        return self._run_zsh(command, timeout)
 
     def run_script(self, code, language="python", timeout=30):
         if language != "python":
@@ -175,7 +182,7 @@ exec({json.dumps(code)})
     def get_tool_definitions(self):
         tools = [
             {"type": "function", "function": {"name": "run_command", "description": "Run a shell command (safe commands only, no chaining)", "parameters": {"type": "object", "properties": {"command": {"type": "string", "description": "Command to execute"}, "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 60}}, "required": ["command"]}}},
-            {"type": "function", "function": {"name": "run_shell", "description": "Run a native shell command", "parameters": {"type": "object", "properties": {"command": {"type": "string", "description": "Command"}, "timeout": {"type": "integer", "default": 60}}, "required": ["command"]}}},
+            {"type": "function", "function": {"name": "run_shell", "description": "Run a native shell command (PowerShell on Windows, bash/zsh on Unix)", "parameters": {"type": "object", "properties": {"command": {"type": "string", "description": "Command"}, "timeout": {"type": "integer", "default": 60}}, "required": ["command"]}}},
         ]
         if is_windows():
             tools.append({"type": "function", "function": {"name": "run_powershell", "description": "Run a PowerShell command (Windows only)", "parameters": {"type": "object", "properties": {"command": {"type": "string", "description": "PowerShell command"}, "timeout": {"type": "integer", "default": 60}}, "required": ["command"]}}})

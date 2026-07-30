@@ -70,32 +70,8 @@ class ProactiveMonitor:
             pass
 
     def _get_idle_secs(self):
-        try:
-            if is_windows():
-                import ctypes
-                class LASTINPUTINFO(ctypes.Structure):
-                    _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
-                lii = LASTINPUTINFO()
-                lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
-                ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii))
-                return (ctypes.windll.kernel32.GetTickCount() - lii.dwTime) // 1000
-            elif is_macos():
-                r = subprocess.run(["ioreg", "-c", "IOHIDSystem"],
-                    capture_output=True, text=True, timeout=5)
-                for line in r.stdout.split('\n'):
-                    if "HIDIdleTime" in line:
-                        ns = int(line.split('=')[1].strip().strip('"'))
-                        return int(ns / 1000000000)
-                return 0
-            else:
-                r = subprocess.run(["xprintidle"], capture_output=True, text=True, timeout=5)
-                if r.returncode == 0:
-                    return int(r.stdout.strip()) // 1000
-                r2 = subprocess.run(["loginctl", "show-session", "-p", "IdleHint"],
-                    capture_output=True, text=True, timeout=5)
-                return 0
-        except Exception:
-            return 0
+        from core.platform_utils import get_idle_seconds
+        return get_idle_seconds()
 
     def _check_idle_suggestions(self):
         now = time.time()

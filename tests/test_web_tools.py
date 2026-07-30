@@ -18,10 +18,11 @@ class TestWebToolsInit(unittest.TestCase):
         w = WebTools()
         defs = w.get_tool_definitions()
         self.assertIsInstance(defs, list)
-        self.assertEqual(len(defs), 2)
+        self.assertEqual(len(defs), 3)
         names = [d["function"]["name"] for d in defs]
         self.assertIn("web_search", names)
         self.assertIn("web_fetch", names)
+        self.assertIn("web_osint_search", names)
 
     def test_get_handler_search(self):
         w = WebTools()

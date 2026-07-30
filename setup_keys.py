@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Secure API Key Setup for FRIDAY.
-
-Stores keys securely using the OS keychain:
-  - Windows: Windows Credential Manager (via PowerShell)
-  - macOS: Keychain (via keyring or security CLI)
-  - Linux: Secret Service (via keyring or secret-tool)
-
-Fallback: config.json with restricted file permissions (chmod 600 / icacls).
-"""
 import os
 import sys
 import json
@@ -24,243 +15,142 @@ PROVIDER_MAP = {
     "GROQ_API_KEY": "groq",
 }
 
-_CREDENTIAL_TARGET = "FRIDAY_API_Keys"
 
-
-def _is_windows():
-    return sys.platform == "win32"
-
-
-def _is_macos():
-    return sys.platform == "darwin"
-
-
-def _store_credential_windows(target, username, secret):
-    """Store a credential in Windows Credential Manager via PowerShell."""
-    ps_script = f'''
-$target = "{target}"
-$username = "{username}"
-$secret = "{secret}" | ConvertTo-SecureString -AsPlainText -Force
-$cred = New-Object System.Management.Automation.PSCredential($username, $secret)
-$cred | Export-Clixml -Path "$env:TEMP\\{target}_{username}.xml" -Force
-'''
-    try:
-        subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_script],
-            capture_output=True, text=True, timeout=10, check=True
-        )
-        return True
-    except Exception:
-        return False
-
-
-def _retrieve_credential_windows(target, username):
-    """Retrieve a credential from Windows Credential Manager via PowerShell."""
-    ps_script = f'''
-$path = "$env:TEMP\\{target}_{username}.xml"
-if (Test-Path $path) {{
-    $cred = Import-Clixml $path
-    $cred.GetNetworkCredential().Password
-}} else {{
-    Write-Output ""
-}}
-'''
-    try:
-        r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_script],
-            capture_output=True, text=True, timeout=10
-        )
-        return r.stdout.strip() or None
-    except Exception:
-        return None
-
-
-def _delete_credential_windows(target, username):
-    """Delete a credential from Windows Credential Manager."""
-    ps_script = f'Remove-Item -Path "$env:TEMP\\{target}_{username}.xml" -Force -ErrorAction SilentlyContinue'
-    try:
-        subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_script],
-            capture_output=True, text=True, timeout=10
-        )
-    except Exception:
-        pass
-
-
-def _store_credential(target, username, secret):
-    """Store a credential in the OS keychain."""
-    if _is_windows():
-        return _store_credential_windows(target, username, secret)
-    else:
-        try:
-            import keyring
-            keyring.set_password(target, username, secret)
-            return True
-        except ImportError:
-            if _is_macos():
-                subprocess.run(
-                    ["security", "add-generic-password", "-s", target, "-a", username, "-w", secret, "-U"],
-                    capture_output=True, text=True, timeout=10
-                )
-                return True
-            return False
-
-
-def _retrieve_credential(target, username):
-    """Retrieve a credential from the OS keychain."""
-    if _is_windows():
-        return _retrieve_credential_windows(target, username)
-    else:
-        try:
-            import keyring
-            return keyring.get_password(target, username)
-        except ImportError:
-            if _is_macos():
-                r = subprocess.run(
-                    ["security", "find-generic-password", "-s", target, "-a", username, "-w"],
-                    capture_output=True, text=True, timeout=10
-                )
-                if r.returncode == 0:
-                    return r.stdout.strip()
-            return None
-
-
-def _delete_credential(target, username):
-    """Delete a credential from the OS keychain."""
-    if _is_windows():
-        _delete_credential_windows(target, username)
-    else:
-        try:
-            import keyring
-            keyring.delete_password(target, username)
-        except (ImportError, keyring.errors.PasswordDeleteError):
-            if _is_macos():
-                subprocess.run(
-                    ["security", "delete-generic-password", "-s", target, "-a", username],
-                    capture_output=True, text=True, timeout=10
-                )
-
-
-def _load_config():
+def _get_config():
     if CONFIG_PATH.exists():
         try:
             return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            return {}
     return {}
 
 
 def _save_config(config):
-    CONFIG_PATH.write_text(json.dumps(config, indent=2), encoding="utf-8")
-    _restrict_permissions()
+    CONFIG_PATH.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    _restrict_permissions(CONFIG_PATH)
+    print(f"  [OK] Saved config to {CONFIG_PATH}")
 
 
-def _restrict_permissions():
-    """Restrict config.json to current user only."""
+def _restrict_permissions(path):
     try:
-        if _is_windows():
-            user = os.environ.get("USERNAME", "")
-            if user:
-                cmd = [
-                    "icacls", str(CONFIG_PATH),
-                    "/inheritance:r",
-                    "/grant", f"{user}:(R,W)"
-                ]
-                subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-                print(f"  [OK] Permissions restricted to user '{user}' only")
+        if sys.platform == "win32":
+            import getpass
+            user = getpass.getuser()
+            cmd = ["icacls", str(path), "/inheritance:r", "/grant", f"{user}:(R,W)"]
+            subprocess.run(cmd, capture_output=True, timeout=10)
         else:
-            import stat
-            CONFIG_PATH.chmod(stat.S_IRUSR | stat.S_IWUSR)
-            print("  [OK] Permissions restricted to owner only (600)")
-    except Exception as e:
-        print(f"  [WARN] Could not restrict permissions: {e}")
+            path.chmod(0o600)
+    except Exception:
+        pass
 
 
-def _get_apikey(service):
-    """Get API key first from credential manager, then from config.json."""
-    env_var = service
-    username = os.environ.get("USERNAME", os.environ.get("USER", "default"))
-
-    # Try credential manager first
-    cred = _retrieve_credential(_CREDENTIAL_TARGET, env_var)
-    if cred:
-        print(f"  [KEYCHAIN] {env_var} retrieved from OS keychain")
-        return cred
-
-    # Fall back to config.json
-    config = _load_config()
-    provider = PROVIDER_MAP.get(env_var)
-    if provider and provider in config.get("providers", {}):
-        return config["providers"][provider].get("api_key")
-    return config.get("api_key")
-
-
-def _store_apikey(service, key):
-    """Store API key in OS keychain only."""
-    env_var = service
-    username = os.environ.get("USERNAME", os.environ.get("USER", "default"))
-
-    if _store_credential(_CREDENTIAL_TARGET, env_var, key):
-        print(f"  [OK] {env_var} stored in OS keychain")
-
-        config = _load_config()
-        provider = PROVIDER_MAP.get(env_var)
-        if provider and "providers" in config and provider in config["providers"]:
-            config["providers"][provider].pop("api_key", None)
+def _store_in_vault(env_key, value):
+    from core.credentials import get_vault
+    vault = get_vault()
+    if vault.store(env_key, value):
+        provider = PROVIDER_MAP.get(env_key)
+        if provider:
+            config = _get_config()
+            if "providers" not in config:
+                config["providers"] = {}
+            if provider not in config["providers"]:
+                config["providers"][provider] = {}
+            config["providers"][provider]["api_key_env"] = env_key
+            if env_key in config["providers"].get(provider, {}):
+                del config["providers"][provider][env_key]
             _save_config(config)
-    else:
-        print(f"  [WARN] Could not store in OS keychain.")
-        print(f"  [HINT] Set environment variable: set {env_var}=your_key")
+        return True
+    return False
+
+
+def _retrieve_from_vault(env_key):
+    from core.credentials import get_vault
+    vault = get_vault()
+    val = vault.retrieve(env_key)
+    if val:
+        return val
+    return os.environ.get(env_key)
+
+
+def setup_key(service_name, prompt_text):
+    print(f"\n  [{service_name}]")
+    current = _retrieve_from_vault(service_name)
+    if current:
+        masked = current[:4] + "*" * (len(current) - 8) + current[-4:] if len(current) > 12 else "***"
+        print(f"    Current key: {masked}")
+        choice = input("    Overwrite? (y/N): ").strip().lower()
+        if choice != 'y':
+            print("    Skipped.")
+            return True
+    key = input(f"    Enter API key for {prompt_text}: ").strip()
+    if not key:
+        print("    No key entered. Skipping.")
+        return False
+    if _store_in_vault(service_name, key):
+        print(f"    {service_name} stored securely in encrypted vault.")
+        return True
+    print(f"    ERROR: Failed to store key.")
+    return False
+
+
+def auto_detect_keys():
+    config = _get_config()
+    migrated = 0
+    provider_keys = {
+        "GROQ_API_KEY": ["providers", "groq", "api_key"],
+    }
+    for env_key, config_path in provider_keys.items():
+        val = None
+        cfg = config
+        for part in config_path:
+            if isinstance(cfg, dict):
+                cfg = cfg.get(part, {})
+        if isinstance(cfg, str) and cfg:
+            val = cfg
+        if not val:
+            val = os.environ.get(env_key)
+        if val:
+            existing = _retrieve_from_vault(env_key)
+            if not existing:
+                _store_in_vault(env_key, val)
+                migrated += 1
+    if migrated:
+        print(f"  [OK] Auto-migrated {migrated} API key(s) to encrypted vault")
+    return migrated
 
 
 def main():
-    print()
-    print("  =====================================================")
-    print("   FRIDAY - Secure API Key Setup")
-    print("  =====================================================")
-    print()
-    print("  Keys are stored in OS keychain when available,")
-    print("  with config.json as fallback (restricted permissions).")
-    print()
+    print("\n  ============ FRIDAY KEY SETUP ============")
+    print("  | Secure API Key Storage (cross-platform) |")
+    print("  ===========================================\n")
 
-    existing_any = any(_get_apikey(service) for service, _ in SERVICES)
+    migrated = auto_detect_keys()
+    if migrated:
+        print(f"  Found {migrated} existing key(s) and migrated them securely.\n")
 
-    if existing_any:
-        print()
-        resp = input("  Keys already exist. Overwrite any? (y/N): ").strip().lower()
-        if resp != "y":
-            print("  No changes made.")
-            print()
-            return
+    all_success = True
+    for env_key, prompt_text in SERVICES:
+        if not setup_key(env_key, prompt_text):
+            all_success = False
 
-    print()
-    for env_var, desc in SERVICES:
-        current = _get_apikey(env_var)
-        if current:
-            print(f"  [{env_var}] Current: stored")
-        else:
-            print(f"  [{env_var}] Current: not set")
-
-        val = input(f"  Enter key for {desc} (or press Enter to skip): ").strip()
+    print("\n  Verification:")
+    all_ok = True
+    for env_key, prompt_text in SERVICES:
+        val = _retrieve_from_vault(env_key)
         if val:
-            if env_var == "GROQ_API_KEY" and not val.startswith("gsk_"):
-                print(f"  [WARN] Groq API keys typically start with 'gsk_'. Check your key.")
-
-            _store_apikey(env_var, val)
-        print()
-
-    print("  =====================================================")
-    print("  Verification:")
-    for env_var, _ in SERVICES:
-        val = _get_apikey(env_var)
-        if val:
-            masked = val[:8] + "..." + val[-4:]
-            print(f"  [OK] {env_var} = {masked}")
+            masked = val[:4] + "*" * (len(val) - 8) + val[-4:] if len(val) > 12 else "***"
+            print(f"    {env_key}: {masked} [OK]")
         else:
-            print(f"  [--] {env_var} not set")
-    print("  =====================================================")
-    print()
+            print(f"    {env_key}: not set [WARN]")
+            all_ok = False
+
+    if all_ok:
+        print("\n  All keys configured. You can now run FRIDAY.")
+    else:
+        print("\n  Some keys are missing. FRIDAY may not work fully.")
+
+    return 0 if all_ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

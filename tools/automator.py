@@ -5,7 +5,7 @@ import webbrowser
 import time
 from pathlib import Path
 
-from core.platform_utils import is_windows, is_macos, is_linux, find_chrome, open_file, launch_app as xlaunch, notify
+from core.platform_utils import is_windows, is_macos, is_linux, find_chrome, open_file, launch_app as xlaunch, notify, get_chrome_profiles, list_installed_apps
 from core.ratelimit import check_rate
 
 DEFAULT_PROFILE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "chrome_default_profile.json")
@@ -118,13 +118,7 @@ class Automator:
         return self._load_default_profile()
 
     def _list_chrome_profiles(self):
-        try:
-            ls = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data\Local State")
-            with open(ls, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data.get("profile", {}).get("info_cache", {})
-        except Exception:
-            return {}
+        return get_chrome_profiles()
 
     def _resolve_chrome_profile(self, name_hint):
         profiles = self._list_chrome_profiles()
@@ -335,21 +329,9 @@ class Automator:
 
     def list_apps(self):
         try:
-            r = subprocess.run(
-                ["powershell", "-NoProfile", "-Command",
-                 "Get-StartApps | Select-Object -First 50 Name | ConvertTo-Json"],
-                capture_output=True, text=True, timeout=15
-            )
-            import json
-            try:
-                data = json.loads(r.stdout)
-                if isinstance(data, dict):
-                    data = [data]
-                if not isinstance(data, list):
-                    return "Apps list failed"
-            except (json.JSONDecodeError, TypeError):
-                return "Apps list failed"
-            names = [d["Name"] for d in data if isinstance(d, dict) and d.get("Name")]
+            names = list_installed_apps(limit=50)
+            if not names:
+                return "No installed apps found."
             return "Installed apps:\n" + "\n".join(f"  {i+1}. {n}" for i, n in enumerate(names))
         except Exception as e:
             return "Apps list failed"
@@ -359,30 +341,38 @@ class Automator:
     _APPS_CACHE_TTL = 120
 
     def _build_apps_cache(self):
-        self._apps_cache = set()
+        apps = set()
         try:
-            import json
-            combined = " | ".join([
-                "Get-StartApps | Select-Object Name",
-                "Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object DisplayName | Select-Object @{n='N';e={$_.DisplayName}}",
-                "Get-ChildItem 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs' -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue | Select-Object @{n='N';e={$_.BaseName}}",
-                "[Environment]::GetEnvironmentVariable('PATH','User') -split ';' | Where-Object { $_ } | Get-ChildItem -Filter '*.exe' -ErrorAction SilentlyContinue | Select-Object @{n='N';e={$_.BaseName}}"
-            ])
-            ps_script = f"$results = @(); $results += {combined}; $results | Where-Object {{ $_.N }} | Select-Object -Unique -First 200 N | ConvertTo-Json"
-            r = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps_script],
-                capture_output=True, text=True, timeout=30
-            )
-            if r.stdout.strip():
-                data = json.loads(r.stdout)
-                if isinstance(data, dict):
-                    data = [data]
-                for d in data if isinstance(data, list) else []:
-                    name = d.get("N")
-                    if name and name.strip():
-                        self._apps_cache.add(name.strip())
+            for name in list_installed_apps(limit=200):
+                if name.strip():
+                    apps.add(name.strip())
         except Exception:
             pass
+        if is_windows():
+            try:
+                import json
+                combined = " | ".join([
+                    "Get-StartApps | Select-Object Name",
+                    "Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object DisplayName | Select-Object @{n='N';e={$_.DisplayName}}",
+                    "Get-ChildItem 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs' -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue | Select-Object @{n='N';e={$_.BaseName}}",
+                    "[Environment]::GetEnvironmentVariable('PATH','User') -split ';' | Where-Object { $_ } | Get-ChildItem -Filter '*.exe' -ErrorAction SilentlyContinue | Select-Object @{n='N';e={$_.BaseName}}"
+                ])
+                ps_script = f"$results = @(); $results += {combined}; $results | Where-Object {{ $_.N }} | Select-Object -Unique -First 200 N | ConvertTo-Json"
+                r = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", ps_script],
+                    capture_output=True, text=True, timeout=30
+                )
+                if r.stdout.strip():
+                    data = json.loads(r.stdout)
+                    if isinstance(data, dict):
+                        data = [data]
+                    for d in data if isinstance(data, list) else []:
+                        name = d.get("N")
+                        if name and name.strip():
+                            apps.add(name.strip())
+            except Exception:
+                pass
+        self._apps_cache = apps
         self._apps_cache_time = time.time()
 
     def list_all_apps(self, search=None):
@@ -406,7 +396,7 @@ class Automator:
         return [
             {"type": "function", "function": {"name": "launch_app", "description": "Launch a local application by name or path (e.g. 'notepad', 'calculator', 'code', 'chrome'). NOT for websites — use browse_url for that.", "parameters": {"type": "object", "properties": {"name_or_path": {"type": "string", "description": "App name (e.g. 'notepad') or full path to executable"}}, "required": ["name_or_path"]}}},
             {"type": "function", "function": {"name": "open_file", "description": "Open file with default app", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "File path"}}, "required": ["path"]}}},
-            {"type": "function", "function": {"name": "open_folder", "description": "Open folder in Explorer", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Folder path"}}, "required": ["path"]}}},
+            {"type": "function", "function": {"name": "open_folder", "description": "Open folder in file manager", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Folder path"}}, "required": ["path"]}}},
             {"type": "function", "function": {"name": "browse_url", "description": "Open a website in Chrome. Use for any URL or domain name (e.g. 'github.com', 'instagram.com', 'youtube.com'). NOT for launching local apps.", "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "URL or domain name (e.g. 'github.com', 'https://example.com/page')"}}, "required": ["url"]}}},
             {"type": "function", "function": {"name": "search_web", "description": "Google search in browser", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "Search query"}}, "required": ["query"]}}},
             {"type": "function", "function": {"name": "send_keys", "description": "Type text via simulated keyboard", "parameters": {"type": "object", "properties": {"text": {"type": "string", "description": "Text to type"}}, "required": ["text"]}}},
@@ -418,7 +408,7 @@ class Automator:
             {"type": "function", "function": {"name": "screenshot", "description": "Take a screenshot of the screen", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "get_clipboard", "description": "Get text from clipboard", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "set_clipboard", "description": "Copy text to clipboard", "parameters": {"type": "object", "properties": {"text": {"type": "string", "description": "Text to copy"}}, "required": ["text"]}}},
-            {"type": "function", "function": {"name": "notify", "description": "Show Windows notification toast", "parameters": {"type": "object", "properties": {"title": {"type": "string", "description": "Notification title"}, "message": {"type": "string", "description": "Notification body text"}}, "required": ["title", "message"]}}},
+            {"type": "function", "function": {"name": "notify", "description": "Show desktop notification toast", "parameters": {"type": "object", "properties": {"title": {"type": "string", "description": "Notification title"}, "message": {"type": "string", "description": "Notification body text"}}, "required": ["title", "message"]}}},
             {"type": "function", "function": {"name": "list_apps", "description": "Show installed apps from Start Menu", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "list_all_apps", "description": "Search all installed apps including Start Menu, registry, PATH, and Program Files. Optionally filter by name.", "parameters": {"type": "object", "properties": {"search": {"type": "string", "description": "Optional search term to filter apps"}}}}},
             {"type": "function", "function": {"name": "set_default_profile", "description": "Set default Chrome profile", "parameters": {"type": "object", "properties": {"profile": {"type": "string", "description": "Profile name"}}, "required": ["profile"]}}},

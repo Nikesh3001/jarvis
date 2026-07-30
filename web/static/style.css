@@ -189,6 +189,78 @@ html, body {
   color: var(--accent);
 }
 
+/* ── Quick Action Buttons ───────────────────────────────────────────────── */
+.tool-button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tool-btn {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.tool-btn:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+  background: var(--accent-glow);
+}
+
+.osint-btn {
+  border-color: #e38400;
+  color: #e38400;
+}
+
+.osint-btn:hover {
+  background: rgba(227, 132, 0, 0.12);
+  border-color: #e38400;
+  box-shadow: 0 0 10px rgba(227, 132, 0, 0.15);
+}
+
+.chart-btn {
+  border-color: #1a56db;
+  color: #1a56db;
+}
+
+.chart-btn:hover {
+  background: rgba(26, 86, 219, 0.12);
+  border-color: #1a56db;
+  box-shadow: 0 0 10px rgba(26, 86, 219, 0.15);
+}
+
+.diagram-btn {
+  border-color: #0e9f6e;
+  color: #0e9f6e;
+}
+
+.diagram-btn:hover {
+  background: rgba(14, 159, 110, 0.12);
+  border-color: #0e9f6e;
+  box-shadow: 0 0 10px rgba(14, 159, 110, 0.15);
+}
+
+.ram-btn {
+  border-color: #d03801;
+  color: #d03801;
+}
+
+.ram-btn:hover {
+  background: rgba(208, 56, 1, 0.12);
+  border-color: #d03801;
+  box-shadow: 0 0 10px rgba(208, 56, 1, 0.15);
+}
+
 /* ── Chat Area ────────────────────────────────────────────────────────────── */
 .chat-area {
   display: flex;

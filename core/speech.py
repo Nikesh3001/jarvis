@@ -77,33 +77,12 @@ def _tts_macos(text):
     subprocess.run(["say", text], capture_output=True, timeout=30)
 
 
-def _is_wsl():
-    try:
-        with open("/proc/version") as f:
-            return "microsoft" in f.read().lower()
-    except Exception:
-        return False
-
-
-def _tts_wsl(text):
-    b64 = base64.b64encode(text.encode("utf-8")).decode()
-    ps = f"[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64}'))"
-    ps_cmd = [
-        "powershell.exe", "-NoProfile", "-Command",
-        "Add-Type -AssemblyName System.Speech;",
-        "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;",
-        f"$s.Speak({ps})",
-    ]
-    subprocess.run(ps_cmd, capture_output=True, timeout=60)
-
-
 def _tts_linux(text):
-    if _is_wsl():
-        try:
-            _tts_wsl(text)
-            return
-        except Exception:
-            pass
+    from core.platform_utils import get_tts_engine, speak_text
+    engine = get_tts_engine()
+    if engine:
+        speak_text(text, engine)
+        return
     for cmd in [
         ["spd-say", text],
         ["espeak-ng", text],
@@ -115,7 +94,7 @@ def _tts_linux(text):
                 return
         except Exception:
             continue
-    print(f"  [TTS unavailable — install 'espeak-ng' on Linux or run from Windows]")
+    print(f"  [TTS unavailable — install 'espeak-ng' or 'spd-say' on Linux]")
 
 
 class SpeechEngine:
@@ -303,15 +282,5 @@ class SpeechEngine:
 
 
 def _find_linux_tts():
-    if _is_wsl():
-        try:
-            return subprocess.run(["which", "powershell.exe"], capture_output=True).returncode == 0
-        except Exception:
-            pass
-    for cmd in ["spd-say", "espeak-ng", "espeak"]:
-        try:
-            if subprocess.run(["which", cmd], capture_output=True).returncode == 0:
-                return True
-        except Exception:
-            pass
-    return False
+    from core.platform_utils import get_tts_engine
+    return get_tts_engine() is not None
