@@ -23,7 +23,13 @@ class VisionEngine:
         path = self._capture_screenshot()
         if not path:
             return "Screenshot capture failed"
-        return self.analyze_image(path, prompt)
+        try:
+            return self.analyze_image(path, prompt)
+        finally:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
 
     def analyze_image(self, image_path: str, prompt: str = "Describe this image in detail.") -> str:
         try:

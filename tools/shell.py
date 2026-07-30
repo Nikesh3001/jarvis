@@ -10,8 +10,8 @@ from core.ratelimit import check_rate
 from tools.code_interpreter import SandboxError
 
 
-BLOCKED_CHAINING = re.compile(r'[;&|`]|\$\(|\$\{|\|\|')
-BLOCKED_REDIRECT = re.compile(r'(?:^|[^a-zA-Z])[<>]{1,2}(?!\s*$)\s*')
+BLOCKED_CHAINING = re.compile(r'[;&|`\n\r\x00]|\$\(|\$\{|\|\|')
+BLOCKED_REDIRECT = re.compile(r'[<>]')
 
 SAFE_COMMANDS_WINDOWS = {
     "echo", "dir", "type", "more", "find", "findstr", "where",
@@ -88,10 +88,11 @@ class ShellCommander:
             return "Rate limit exceeded. Please wait before running more commands."
         try:
             parts = _check_command_safety(command)
+            clean_cmd = " ".join(shlex.quote(p) for p in parts)
             if is_windows():
-                return self._execute(["cmd", "/c", command], timeout)
+                return self._execute(["cmd", "/c", clean_cmd], timeout)
             if is_macos():
-                return self._execute(["zsh", "-c", command], timeout)
+                return self._execute(["zsh", "-c", clean_cmd], timeout)
             return self._execute(parts, timeout)
         except PermissionError as e:
             return str(e)

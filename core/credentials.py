@@ -65,8 +65,10 @@ class CredentialVault:
 
     def _derive_machine_key(self) -> bytes:
         machine_id = self._get_machine_id()
+        secret = os.environ.get("FRIDAY_VAULT_SECRET", "")
+        key_material = f"{machine_id}:{secret}" if secret else machine_id
         salt = _get_or_create_salt()
-        return hashlib.pbkdf2_hmac("sha256", machine_id.encode(), salt, 100000, dklen=32)
+        return hashlib.pbkdf2_hmac("sha256", key_material.encode(), salt, 600000, dklen=32)
 
     def _encrypt(self, plaintext: str) -> str:
         from cryptography.fernet import Fernet

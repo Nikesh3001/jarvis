@@ -69,7 +69,8 @@ def _disk_usage(path="C:\\"):
         if not drive_letter.isascii() or not drive_letter.isalpha():
             return "Error: invalid drive letter"
         result = subprocess.run(
-            ["wmic", "logicaldisk", "where", f"name='{drive_letter}:'", "get", "size,freespace"],
+            ["powershell", "-NoProfile", "-Command",
+             f"Get-CimInstance Win32_LogicalDisk -Filter \"name='{drive_letter}:'\" | Select-Object @{{N='Size';E={{$_.Size}}}}, @{{N='FreeSpace';E={{$_.FreeSpace}}}} | Format-Table -HideTableHeaders"],
             capture_output=True, text=True, timeout=15
         )
         return result.stdout.strip()

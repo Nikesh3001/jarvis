@@ -75,9 +75,10 @@ def _verify_state(state_json, signature):
 
 def _save_state():
     try:
-        state = {}
-        for key, bucket in _buckets.items():
-            state[key] = bucket.to_dict()
+        with _buckets_lock:
+            state = {}
+            for key, bucket in _buckets.items():
+                state[key] = bucket.to_dict()
         state_json = json.dumps(state)
         signature = _sign_state(state_json)
         _RATE_STATE_PATH.write_text(json.dumps({"data": state, "sig": signature}), encoding="utf-8")
@@ -95,10 +96,10 @@ def _load_state():
                     return
                 data = raw["data"]
             else:
-                # Legacy format (no HMAC) — accept but will re-save with sig
                 data = raw
-            for key, bucket_data in data.items():
-                _buckets[key] = TokenBucket.from_dict(bucket_data)
+            with _buckets_lock:
+                for key, bucket_data in data.items():
+                    _buckets[key] = TokenBucket.from_dict(bucket_data)
     except Exception:
         pass
 

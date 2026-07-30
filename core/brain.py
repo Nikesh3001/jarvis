@@ -27,6 +27,7 @@ You MUST think before every non-trivial response. Place your reasoning inside <t
 - After tool results: reason again in <think> before formulating your response
 - Each section should be at least 30 words for thoroughness
 - Confidence ratings: 0-3 = guess, 4-6 = plausible, 7-8 = confident, 9-10 = certain
+- After thinking: answer DIRECTLY. No preamble. The response IS the answer.
 """
 
 SYSTEM_PROMPT = """You are FRIDAY — a world-class polyglot coding AI with mastery of ALL programming languages.
@@ -49,15 +50,15 @@ TOOL USAGE - CRITICAL:
 - If a tool fails, report the error clearly. Do not make up data.
 - If you don't have vision or image recognition capabilities, say "I don't have vision" directly.
 
-RESPONSE FORMAT:
-- Structure your answers with clear sections using markdown headings (##, ###) when appropriate.
-- Use code blocks with language tags for any code or commands.
-- For lists of items, use bullet points or numbered lists for readability.
-- When explaining concepts, lead with the key insight, then provide details.
-- Format error messages clearly: state what went wrong, why, and how to fix it.
-- Keep paragraphs concise (2-5 sentences max). Use line breaks between ideas.
-- For comparisons, use tables where appropriate.
-- End with a brief summary or next steps when answering multi-part questions.
+RESPONSE FORMAT (OPENCODE STYLE):
+- Answer DIRECTLY. No preamble like "Sure", "Here is", "I can help", "I understand".
+- The response IS the answer. Just the code, command, or solution.
+- Be as concise as possible while being complete. 1 line is better than 2.
+- No explanations unless the user asks. No summaries. No next steps.
+- When giving code: just the code in a code block. That's it.
+- For questions: answer in 1-3 words if possible. Directly to the point.
+- Format error messages concisely: what went wrong + how to fix.
+- Use markdown only when it improves clarity (code blocks, bold for emphasis).
 
 RULES:
 - Produce idiomatic, production-quality code for each language.
@@ -536,7 +537,7 @@ class BaseBrain:
                             "type": tc.get("type", "function"),
                             "function": {
                                 "name": tc["function"]["name"],
-                                "arguments": tc["function"]["arguments"] if isinstance(tc["function"]["arguments"], str) else json.dumps(tc["function"]["arguments"])
+                                "arguments": tc["function"]["arguments"] if isinstance(tc["function"]["arguments"], str) else json.dumps(tc["function"]["arguments"], default=str)
                             }
                         }
                         for tc in m["tool_calls"]
@@ -600,7 +601,7 @@ class BaseBrain:
                 except json.JSONDecodeError:
                     args = {}
 
-                tool_key = f"{name}({json.dumps(args, sort_keys=True)})"
+                tool_key = f"{name}({json.dumps(args, sort_keys=True, default=str)})"
                 if tool_key in seen_tool_keys:
                     loop_break = True
                     break
@@ -624,7 +625,11 @@ class BaseBrain:
                 else:
                     result_str = f"Tool '{name}' not found"
 
-                truncated = result_str[:1000] if len(result_str) > 1000 else result_str
+                if result_str is None:
+                    result_str = ""
+                elif not isinstance(result_str, str):
+                    result_str = str(result_str)
+                truncated = result_str[:1000]
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc_id,
@@ -669,7 +674,10 @@ class GroqBrain(BaseBrain):
                     self._api_keys.append(k)
             if not self._api_keys:
                 raise ValueError("No API keys found. Set OPENROUTER_API_KEY or GROQ_API_KEY.")
-            from groq import Groq
+            try:
+                from groq import Groq
+            except ImportError:
+                raise ImportError("Install groq: pip install groq")
             self._key_index = 0
             self.client = Groq(api_key=self._api_keys[0])
         else:

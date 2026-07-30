@@ -4,7 +4,7 @@ import time
 import threading
 import datetime
 import subprocess
-from core.platform_utils import is_windows, is_macos, is_linux
+from core.platform_utils import is_windows, is_macos
 
 
 class ProactiveMonitor:
@@ -37,7 +37,8 @@ class ProactiveMonitor:
         print("[MONITOR] Proactive monitoring started")
 
     def stop(self):
-        self.running = False
+        with self._lock:
+            self.running = False
         self._stop_event.set()
 
     def _run(self):

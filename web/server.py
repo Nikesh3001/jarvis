@@ -99,7 +99,7 @@ def _set_session_cookie(response):
         httponly=True,
         samesite="strict",
         max_age=86400,
-        secure=False,
+        secure=True,
     )
 
 
@@ -142,14 +142,14 @@ async def security_headers(request, call_next):
 
 
 _assistant = None
-_assistant_lock = threading.Lock()
+_assistant_lock = asyncio.Lock()
 
 
-def get_assistant():
+async def get_assistant():
     global _assistant
     if _assistant is not None:
         return _assistant
-    with _assistant_lock:
+    async with _assistant_lock:
         if _assistant is not None:
             return _assistant
         from core.assistant import Assistant
@@ -188,7 +188,7 @@ async def api_status(request: Request):
     except HTTPException:
         raise
     try:
-        asst = get_assistant()
+        asst = await get_assistant()
         import psutil
         mem = psutil.virtual_memory()
         cpu = psutil.cpu_percent(interval=0)
@@ -229,7 +229,7 @@ async def api_conversations(request: Request):
     try:
         if not check_rate("web_api_conversations", rate=2, burst=5):
             return {"ok": False, "error": "Rate limit exceeded"}
-        asst = get_assistant()
+        asst = await get_assistant()
         convos = asst._list_conversations()
         return {"ok": True, "conversations": convos}
     except HTTPException:
@@ -247,7 +247,7 @@ async def api_tools(request: Request):
     try:
         if not check_rate("web_api_tools", rate=5, burst=10):
             return {"ok": False, "error": "Rate limit exceeded"}
-        asst = get_assistant()
+        asst = await get_assistant()
         tools = [
             {
                 "name": td["function"]["name"],
@@ -278,7 +278,7 @@ async def api_chat(body: dict, request: Request):
     if not check_rate("web_api_chat", rate=0.5, burst=3):
         return {"ok": False, "error": "Rate limit exceeded. Please wait before sending more messages."}
     try:
-        asst = get_assistant()
+        asst = await get_assistant()
         with asst._conversation_lock:
             asst.conversation.append({"role": "user", "content": message})
             result_text = asst.brain.chat_with_tools(asst.conversation)
@@ -303,7 +303,7 @@ async def api_command(body: dict, request: Request):
     if not check_rate("web_api_command", rate=0.5, burst=3):
         return {"ok": False, "error": "Rate limit exceeded. Please wait before sending more commands."}
     try:
-        asst = get_assistant()
+        asst = await get_assistant()
         handled = asst._handle_command(command)
         if handled:
             return {"ok": True, "handled": True, "response": "(command executed)"}
@@ -323,7 +323,7 @@ async def api_model(body: dict, request: Request):
     if not check_rate("web_api_model", rate=1, burst=3):
         return {"ok": False, "error": "Rate limit exceeded"}
     try:
-        asst = get_assistant()
+        asst = await get_assistant()
         asst.brain.current_model = model
         return {"ok": True, "model": model}
     except Exception:
@@ -337,7 +337,7 @@ async def api_models(request: Request):
     except HTTPException:
         raise
     try:
-        asst = get_assistant()
+        asst = await get_assistant()
         models = asst.brain.list_models()
         return {"ok": True, "models": models, "current": asst.brain.current_model}
     except HTTPException:
@@ -382,7 +382,7 @@ async def ws_chat(websocket: WebSocket):
                 await websocket.send_json({"type": "error", "content": f"Message too long (max {_MAX_MESSAGE_LENGTH} chars)"})
                 continue
 
-            asst = get_assistant()
+            asst = await get_assistant()
             with asst._conversation_lock:
                 asst.conversation.append({"role": "user", "content": message})
 
@@ -471,7 +471,7 @@ def main():
     port = int(os.environ.get("FRIDAY_PORT", 8080))
     if _AUTO_KEY:
         print(f"\n  FRIDAY Dashboard starting on http://localhost:{port}")
-        print(f"  API Key: {API_KEY} (auto-generated)\n")
+        print("  API Key auto-generated (see .env file)\n")
     else:
         print(f"\n  FRIDAY Dashboard starting on http://localhost:{port}\n")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
