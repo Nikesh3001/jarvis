@@ -83,6 +83,40 @@ html, body {
   gap: 12px;
 }
 
+/* AI Voice Mute Button */
+.voice-mute-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--accent-cyan);
+  border: 1px solid var(--border-accent);
+  border-radius: 14px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.voice-mute-btn:hover {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.voice-mute-btn.muted {
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.voice-mute-btn.muted:hover {
+  border-color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
 .model-badge {
   font-size: 11px;
   font-family: var(--font-mono);
@@ -402,48 +436,152 @@ html, body {
   color: var(--text-muted);
 }
 
-/* ── Right Stage (Iron Man Mark III Character Image) ─────────────────────── */
+/* ── Right Stage (Iron Man Mark III Character Image - Rotatable) ────────── */
 .right-image-stage {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 10px;
   position: relative;
   overflow: hidden;
+  user-select: none;
+}
+
+/* Rotation Toolbar */
+.rotation-toolbar {
+  position: absolute;
+  top: 14px;
+  z-index: 10;
+  display: flex;
+  gap: 6px;
+  background: rgba(13, 20, 36, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-accent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.rotate-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.rotate-btn:hover {
+  background: rgba(0, 240, 255, 0.15);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+
+.rotate-btn.active {
+  background: var(--accent-cyan);
+  color: #020617;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px var(--accent-glow);
 }
 
 .ironman-img-wrapper {
   position: relative;
-  height: 100%;
+  height: 82vh;
+  max-height: 700px;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  perspective: 1000px;
+  cursor: grab;
+}
+
+.ironman-img-wrapper.dragging {
+  cursor: grabbing;
 }
 
 .ironman-character-img {
-  height: 86vh;
-  max-height: 720px;
+  height: 100%;
   width: auto;
+  max-width: 100%;
   object-fit: contain;
   filter: drop-shadow(0 0 28px rgba(0, 240, 255, 0.25)) drop-shadow(0 0 45px rgba(239, 68, 68, 0.2));
   z-index: 2;
-  transition: transform 0.3s ease, filter 0.3s ease;
-}
-
-.ironman-character-img:hover {
-  transform: scale(1.02);
-  filter: drop-shadow(0 0 35px rgba(0, 240, 255, 0.45));
+  transform-style: preserve-3d;
+  will-change: transform;
+  pointer-events: none;
 }
 
 .ironman-glow-backdrop {
   position: absolute;
-  width: 300px;
-  height: 480px;
-  background: radial-gradient(circle, rgba(2, 132, 199, 0.2) 0%, rgba(220, 38, 38, 0.08) 50%, transparent 80%);
+  width: 280px;
+  height: 440px;
+  background: radial-gradient(circle, rgba(2, 132, 199, 0.22) 0%, rgba(220, 38, 38, 0.1) 50%, transparent 80%);
   border-radius: 50%;
   z-index: 1;
   pointer-events: none;
+}
+
+/* 3D Illuminated Hologram Pedestal beneath Iron Man */
+.rotation-pedestal {
+  position: absolute;
+  bottom: 15px;
+  width: 220px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pedestal-disc {
+  width: 200px;
+  height: 36px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 240, 255, 0.35) 0%, rgba(15, 23, 42, 0.8) 60%, transparent 80%);
+  border: 1px solid var(--accent-cyan);
+  box-shadow: 0 0 20px var(--accent-glow);
+  transform: rotateX(65deg);
+}
+
+.pedestal-ring {
+  position: absolute;
+  width: 160px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px dashed var(--accent-cyan);
+  opacity: 0.7;
+  transform: rotateX(65deg);
+  animation: pedestalSpin 12s linear infinite;
+}
+
+@keyframes pedestalSpin {
+  from { transform: rotateX(65deg) rotateZ(0deg); }
+  to { transform: rotateX(65deg) rotateZ(360deg); }
+}
+
+.rotation-hint {
+  position: absolute;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* ── Chat Messages Container ────────────────────────────────────────────── */

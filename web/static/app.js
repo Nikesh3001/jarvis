@@ -1,6 +1,7 @@
 /**
  * I.R.O.N. M.A.N. Dashboard Controller
  * Real-time Hardware Telemetry (Device & Host)
+ * AI Voice Mute & Interactive 3D Image Rotation
  */
 
 (function () {
@@ -15,6 +16,21 @@
   const sendBtn = $('#sendBtn');
   const modelBadge = $('#modelBadge');
   const statusDot = $('#statusDot');
+
+  // Voice Elements
+  const voiceMuteBtn = $('#voiceMuteBtn');
+  const voiceIconOn = $('#voiceIconOn');
+  const voiceIconOff = $('#voiceIconOff');
+  const voiceLabel = $('#voiceLabel');
+
+  // Rotation Elements
+  const ironmanWrapper = $('#ironmanWrapper');
+  const ironmanImg = $('#ironmanImg');
+  const btnAutoRotate = $('#btnAutoRotate');
+  const autoRotateText = $('#autoRotateText');
+  const btnRotateLeft = $('#btnRotateLeft');
+  const btnRotateRight = $('#btnRotateRight');
+  const btnResetRotate = $('#btnResetRotate');
 
   const els = {
     cpuVal: $('#cpuVal'),
@@ -40,23 +56,185 @@
   // State
   let ws = null;
   let sending = false;
-  let voiceEnabled = true;
+  let voiceMuted = localStorage.getItem('ironman_voice_muted') === 'true';
   let telemetrySource = 'device'; // 'device' | 'host'
   const synth = window.speechSynthesis;
+
+  // ── AI Voice Mute System ────────────────────────────────────────────────
+  function updateVoiceUI() {
+    if (voiceMuted) {
+      if (synth) synth.cancel(); // Stop any currently playing audio immediately
+      if (voiceMuteBtn) voiceMuteBtn.classList.add('muted');
+      if (voiceIconOn) voiceIconOn.style.display = 'none';
+      if (voiceIconOff) voiceIconOff.style.display = 'block';
+      if (voiceLabel) voiceLabel.textContent = 'MUTED';
+    } else {
+      if (voiceMuteBtn) voiceMuteBtn.classList.remove('muted');
+      if (voiceIconOn) voiceIconOn.style.display = 'block';
+      if (voiceIconOff) voiceIconOff.style.display = 'none';
+      if (voiceLabel) voiceLabel.textContent = 'VOICE ON';
+    }
+  }
+
+  function toggleVoiceMute() {
+    voiceMuted = !voiceMuted;
+    localStorage.setItem('ironman_voice_muted', voiceMuted);
+    if (voiceMuted && synth) {
+      synth.cancel();
+    }
+    updateVoiceUI();
+  }
+
+  if (voiceMuteBtn) {
+    voiceMuteBtn.addEventListener('click', toggleVoiceMute);
+  }
+  updateVoiceUI();
+
+  // ── Interactive 3D Image Rotation System ────────────────────────────────
+  let rotY = 0;
+  let rotX = 0;
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let initialRotY = 0;
+  let isAutoSpinning = false;
+  let autoSpinReqId = null;
+
+  function applyRotation(smooth) {
+    if (!ironmanImg) return;
+    ironmanImg.style.transition = smooth ? 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)' : 'none';
+    ironmanImg.style.transform = `rotateY(${rotY}deg) rotateX(${rotX}deg)`;
+  }
+
+  // Auto Spin Loop
+  function autoSpinLoop() {
+    if (!isAutoSpinning) return;
+    rotY = (rotY + 0.75) % 360;
+    applyRotation(false);
+    autoSpinReqId = requestAnimationFrame(autoSpinLoop);
+  }
+
+  function toggleAutoSpin() {
+    isAutoSpinning = !isAutoSpinning;
+    if (btnAutoRotate) btnAutoRotate.classList.toggle('active', isAutoSpinning);
+    if (autoRotateText) autoRotateText.textContent = isAutoSpinning ? 'Stop Spin' : 'Auto Spin';
+
+    if (isAutoSpinning) {
+      autoSpinLoop();
+    } else if (autoSpinReqId) {
+      cancelAnimationFrame(autoSpinReqId);
+    }
+  }
+
+  if (btnAutoRotate) btnAutoRotate.addEventListener('click', toggleAutoSpin);
+
+  if (btnRotateLeft) {
+    btnRotateLeft.addEventListener('click', () => {
+      isAutoSpinning = false;
+      if (btnAutoRotate) btnAutoRotate.classList.remove('active');
+      if (autoRotateText) autoRotateText.textContent = 'Auto Spin';
+      rotY = (rotY - 45) % 360;
+      rotX = 0;
+      applyRotation(true);
+    });
+  }
+
+  if (btnRotateRight) {
+    btnRotateRight.addEventListener('click', () => {
+      isAutoSpinning = false;
+      if (btnAutoRotate) btnAutoRotate.classList.remove('active');
+      if (autoRotateText) autoRotateText.textContent = 'Auto Spin';
+      rotY = (rotY + 45) % 360;
+      rotX = 0;
+      applyRotation(true);
+    });
+  }
+
+  if (btnResetRotate) {
+    btnResetRotate.addEventListener('click', () => {
+      isAutoSpinning = false;
+      if (btnAutoRotate) btnAutoRotate.classList.remove('active');
+      if (autoRotateText) autoRotateText.textContent = 'Auto Spin';
+      rotY = 0;
+      rotX = 0;
+      applyRotation(true);
+    });
+  }
+
+  // Mouse & Touch Dragging on Iron Man Image
+  if (ironmanWrapper) {
+    ironmanWrapper.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      initialRotY = rotY;
+      ironmanWrapper.classList.add('dragging');
+      if (isAutoSpinning) toggleAutoSpin();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        ironmanWrapper.classList.remove('dragging');
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const deltaX = e.clientX - dragStartX;
+        rotY = (initialRotY + deltaX * 0.8) % 360;
+        applyRotation(false);
+      } else if (ironmanWrapper.matches(':hover') && !isAutoSpinning) {
+        // Subtle 3D cursor tracking tilt
+        const rect = ironmanWrapper.getBoundingClientRect();
+        const normX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const normY = ((e.clientY - rect.top) / rect.height) * 2 - 1;
+        rotX = -normY * 6;
+        applyRotation(false);
+      }
+    });
+
+    ironmanWrapper.addEventListener('mouseleave', () => {
+      if (!isDragging && !isAutoSpinning) {
+        rotX = 0;
+        applyRotation(true);
+      }
+    });
+
+    // Touch Support for Mobile
+    ironmanWrapper.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        isDragging = true;
+        dragStartX = e.touches[0].clientX;
+        initialRotY = rotY;
+        if (isAutoSpinning) toggleAutoSpin();
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+      isDragging = false;
+    });
+
+    window.addEventListener('touchmove', (e) => {
+      if (isDragging && e.touches.length === 1) {
+        const deltaX = e.touches[0].clientX - dragStartX;
+        rotY = (initialRotY + deltaX * 0.9) % 360;
+        applyRotation(false);
+      }
+    }, { passive: true });
+  }
 
   // ── Client Device Real-Time Metrics Engine ──────────────────────────────
   const deviceHardware = {
     cores: navigator.hardwareConcurrency || 8,
     memoryGb: (navigator.deviceMemory && navigator.deviceMemory >= 8) ? navigator.deviceMemory : 15.7,
-    diskTotalGb: 952.3, // Standard 1TB SSD baseline matching photo
+    diskTotalGb: 952.3, // 1TB SSD baseline matching reference photo
     diskUsedGb: 243.0,
   };
 
-  // Check if browser storage estimation is supported
   if (navigator.storage && navigator.storage.estimate) {
     navigator.storage.estimate().then((est) => {
       if (est.quota) {
-        // Quota is typically ~60-80% of available disk space
         const estTotal = Math.round((est.quota / 1024 ** 3) * 1.5 * 10) / 10;
         if (estTotal > 50) deviceHardware.diskTotalGb = estTotal;
       }
@@ -67,7 +245,6 @@
     }).catch(() => {});
   }
 
-  // Real-time Client CPU Jitter & Load Tracker (measures frame latency)
   let clientCpuPercent = 38;
   let lastFrameTime = performance.now();
   let frameDelays = [];
@@ -77,7 +254,6 @@
     const delta = now - lastFrameTime;
     lastFrameTime = now;
 
-    // Normal frame interval ~16.6ms at 60Hz. If system is loaded, delta is higher
     const delay = Math.max(0, delta - 16.7);
     frameDelays.push(delay);
     if (frameDelays.length > 30) frameDelays.shift();
@@ -86,11 +262,9 @@
   }
   requestAnimationFrame(trackClientCpu);
 
-  // Periodically compute client CPU load
   setInterval(() => {
     if (frameDelays.length === 0) return;
     const avgDelay = frameDelays.reduce((a, b) => a + b, 0) / frameDelays.length;
-    // Base fluctuation + load variance
     const dynamicJitter = Math.floor(Math.sin(Date.now() / 1500) * 12 + Math.cos(Date.now() / 900) * 8);
     const measuredLoad = Math.min(60, Math.round(avgDelay * 14));
     clientCpuPercent = Math.max(18, Math.min(94, 35 + measuredLoad + dynamicJitter));
@@ -179,7 +353,7 @@
   }
 
   function speak(text) {
-    if (!voiceEnabled || !synth) return;
+    if (voiceMuted || !synth) return;
     synth.cancel();
 
     const clean = text
@@ -238,7 +412,7 @@
             } else {
               addMessage('assistant', data.content);
             }
-            speak(streamedContent || data.content);
+            if (!voiceMuted) speak(streamedContent || data.content);
             streamingBubble = null;
             streamedContent = '';
             resetSend();
@@ -261,13 +435,19 @@
     const text = (inputEl.value || '').trim();
     if (!text || sending) return;
 
+    // Check for mute shortcut
+    if (text.toLowerCase() === 'mute' || text.toLowerCase() === '/mute') {
+      toggleVoiceMute();
+      inputEl.value = '';
+      return;
+    }
+
     sending = true;
     sendBtn.disabled = true;
     addMessage('user', text);
     inputEl.value = '';
     inputEl.style.height = 'auto';
 
-    // Boost CPU load indicator while AI generates
     clientCpuPercent = Math.min(88, clientCpuPercent + 25);
     renderTelemetry();
 
@@ -289,7 +469,7 @@
       const data = await res.json();
       if (data.ok) {
         addMessage('assistant', data.response);
-        speak(data.response);
+        if (!voiceMuted) speak(data.response);
       } else {
         addMessage('assistant', `Notice: ${data.error}`);
       }
@@ -318,7 +498,6 @@
 
   function renderTelemetry() {
     if (telemetrySource === 'device') {
-      // ── DEVICE MODE (Your Computer / Laptop) ──
       const cpu = clientCpuPercent;
       if (els.cpuVal && els.cpuBar) {
         els.cpuVal.textContent = cpu + '%';
@@ -327,9 +506,7 @@
         if (els.cpuMeta) els.cpuMeta.textContent = `(${deviceHardware.cores} Cores)`;
       }
 
-      // Memory estimation based on device specs
       const memTotal = deviceHardware.memoryGb;
-      // Proportional RAM load (~55-65% typical on Windows/Mac + subtle wave)
       const memUsed = Math.round((memTotal * (0.58 + Math.sin(Date.now() / 5000) * 0.04)) * 10) / 10;
       const memPct = Math.round((memUsed / memTotal) * 100);
 
@@ -340,7 +517,6 @@
         if (els.ramMeta) els.ramMeta.textContent = `(Device)`;
       }
 
-      // Disk estimation
       const diskTotal = deviceHardware.diskTotalGb;
       const diskUsed = deviceHardware.diskUsedGb;
       const diskPct = Math.round((diskUsed / diskTotal) * 100);
@@ -352,7 +528,6 @@
         if (els.diskMeta) els.diskMeta.textContent = `(SSD)`;
       }
     } else if (latestServerStats) {
-      // ── HOST MODE (Cloud Server Container) ──
       const s = latestServerStats;
       if (els.cpuVal && els.cpuBar) {
         const c = Math.round(s.cpu_percent);
@@ -379,7 +554,6 @@
       }
     }
 
-    // Render general server stats
     if (latestServerStats) {
       const s = latestServerStats;
       if (els.providerVal) els.providerVal.textContent = s.provider;
@@ -416,7 +590,6 @@
       latestServerStats = s;
       renderTelemetry();
     } catch {
-      // Still render device metrics even if offline
       renderTelemetry();
     }
   }
@@ -454,7 +627,13 @@
     });
   });
 
-  // ── Keyboard & Input ─────────────────────────────────────────────────────
+  // ── Keyboard & Escape Shortcuts ──────────────────────────────────────────
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (synth) synth.cancel(); // Stop talking on Escape
+    }
+  });
+
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -469,10 +648,10 @@
 
   sendBtn.addEventListener('click', sendMessage);
 
-  // ── Initialize & Real-Time Polling Loop (Every 1000ms) ───────────────────
+  // ── Initialize & Real-Time Polling Loop ──────────────────────────────────
   connectWS();
   fetchStats();
   setInterval(() => {
     fetchStats();
-  }, 1000); // 1-second real-time live refresh
+  }, 1000);
 })();
