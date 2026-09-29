@@ -1,0 +1,73 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+conversations/
+memory_store/
+.env
+.conversation_key
+*.egg-info/
+node_modules/
+dist/
+build/
+venv/
+.venv/
+.DS_Store
+*.log
+
+config.json
+.idea/
+code_index/
+user_profile.json
+test_input.txt
+uv.lock
+.rate_state
+.rate_key
+
+# Tool binaries (install manually)
+tools/bin/*.exe
+tools/bin/*.dll
+tools/bin/*.bat
+tools/bin/*.sh
+tools/bin/nikto
+
+# Runtime artifacts
+cyber_*.txt
+web_*.txt
+web_err*.txt
+web_out*.txt
+
+# Test artifacts
+plans/
+test_server.py
+
+# Embedded git repos
+tools/bin/nikto
+
+# Secrets
+.credentials/
+.csrf_secret
+.vault_key
+config.json
+.env
+
+# Flutter/Dart artifacts (not part of core JARVIS)
+.dart_tool/
+.metadata
+android/
+ios/
+lib/
+linux/
+macos/
+windows/
+*.iml
+pubspec.lock
+pubspec.yaml
+analysis_options.yaml
+
+# Test/build artifacts
+final_test.py
+test_code_interpreter.py
+test/
+new_folder/
+JARVIS_REPORT.md
