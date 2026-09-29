@@ -319,30 +319,53 @@ function generateFridayLocalResponse(message: string): string {
   }
 
   // Open website in Chrome
-  if (lower.startsWith('open ') || lower.includes('in chrome') || lower.includes('open website') || lower.startsWith('browse to') || lower.startsWith('go to')) {
-    const urlMatch = message.match(/https?:\/\/[^\s]+/i) || message.match(/(?:open|launch|browse to|go to)\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/i) || message.match(/(?:open|launch)\s+(youtube|google|github|reddit|twitter|x|facebook|instagram|chatgpt|netflix|wikipedia|linkedin|amazon)/i);
+  if (lower.startsWith('open ') || lower.includes('in chrome') || lower.includes('open website') || lower.startsWith('browse to') || lower.startsWith('go to') || lower.startsWith('launch ')) {
+    const shortcuts: Record<string, string> = {
+      whatsapp: 'https://web.whatsapp.com',
+      'whatsapp web': 'https://web.whatsapp.com',
+      youtube: 'https://youtube.com',
+      google: 'https://google.com',
+      gmail: 'https://mail.google.com',
+      maps: 'https://maps.google.com',
+      spotify: 'https://open.spotify.com',
+      discord: 'https://discord.com/app',
+      telegram: 'https://web.telegram.org',
+      github: 'https://github.com',
+      reddit: 'https://reddit.com',
+      twitter: 'https://x.com',
+      x: 'https://x.com',
+      facebook: 'https://facebook.com',
+      instagram: 'https://instagram.com',
+      chatgpt: 'https://chat.openai.com',
+      netflix: 'https://netflix.com',
+      wikipedia: 'https://wikipedia.org',
+      linkedin: 'https://linkedin.com',
+      amazon: 'https://amazon.com',
+    };
+
+    let targetUrl = '';
+    let serviceName = '';
+
+    const urlMatch = message.match(/https?:\/\/[^\s]+/i);
     if (urlMatch) {
-      let dest = urlMatch[1] || urlMatch[0];
-      const shortcuts: Record<string, string> = {
-        youtube: 'https://youtube.com',
-        google: 'https://google.com',
-        github: 'https://github.com',
-        reddit: 'https://reddit.com',
-        twitter: 'https://x.com',
-        x: 'https://x.com',
-        facebook: 'https://facebook.com',
-        instagram: 'https://instagram.com',
-        chatgpt: 'https://chat.openai.com',
-        netflix: 'https://netflix.com',
-        wikipedia: 'https://wikipedia.org',
-        linkedin: 'https://linkedin.com',
-        amazon: 'https://amazon.com',
-      };
-      if (shortcuts[dest.toLowerCase()]) {
-        dest = shortcuts[dest.toLowerCase()];
+      targetUrl = urlMatch[0];
+      serviceName = targetUrl;
+    } else {
+      const matchOpen = message.match(/(?:open|launch|browse to|go to)\s+([a-zA-Z0-9.-]+)/i);
+      if (matchOpen && matchOpen[1]) {
+        serviceName = matchOpen[1].toLowerCase();
+        if (shortcuts[serviceName]) {
+          targetUrl = shortcuts[serviceName];
+        } else if (serviceName.includes('.')) {
+          targetUrl = `https://${serviceName}`;
+        } else {
+          targetUrl = `https://www.${serviceName}.com`;
+        }
       }
-      const targetUrl = dest.startsWith('http') ? dest : `https://${dest}`;
-      return `### Launching Web Portal\nOpening **${dest}** in your Chrome browser.\n\n🌐 **Target URL**: [${targetUrl}](${targetUrl})\n\n*(If your browser prevented the popup, click the link above or use the launch button to open immediately.)*`;
+    }
+
+    if (targetUrl) {
+      return `### Launching Web Portal\nOpening **${serviceName}** in your Chrome browser.\n\n🌐 **Target URL**: [${targetUrl}](${targetUrl})\n\n*(Click the glowing action button below to open in a new Chrome tab.)*`;
     }
   }
 

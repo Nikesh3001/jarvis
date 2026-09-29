@@ -190,40 +190,57 @@
   }
 
   // ── URL & Website Detection & Launch Engine ──────────────────────────────
+  const webShortcuts = {
+    whatsapp: 'https://web.whatsapp.com',
+    'whatsapp web': 'https://web.whatsapp.com',
+    youtube: 'https://youtube.com',
+    google: 'https://google.com',
+    gmail: 'https://mail.google.com',
+    maps: 'https://maps.google.com',
+    spotify: 'https://open.spotify.com',
+    discord: 'https://discord.com/app',
+    telegram: 'https://web.telegram.org',
+    github: 'https://github.com',
+    reddit: 'https://reddit.com',
+    twitter: 'https://x.com',
+    x: 'https://x.com',
+    facebook: 'https://facebook.com',
+    instagram: 'https://instagram.com',
+    chatgpt: 'https://chat.openai.com',
+    netflix: 'https://netflix.com',
+    wikipedia: 'https://wikipedia.org',
+    linkedin: 'https://linkedin.com',
+    amazon: 'https://amazon.com',
+    twitch: 'https://twitch.tv',
+  };
+
   function extractOpenUrl(text) {
     if (!text) return null;
+    const clean = text.trim();
 
-    const shortcuts = {
-      youtube: 'https://youtube.com',
-      google: 'https://google.com',
-      github: 'https://github.com',
-      reddit: 'https://reddit.com',
-      twitter: 'https://x.com',
-      x: 'https://x.com',
-      facebook: 'https://facebook.com',
-      instagram: 'https://instagram.com',
-      chatgpt: 'https://chat.openai.com',
-      netflix: 'https://netflix.com',
-      wikipedia: 'https://wikipedia.org',
-      linkedin: 'https://linkedin.com',
-      amazon: 'https://amazon.com',
-    };
-
-    // Full URL
-    const matchHttp = text.match(/https?:\/\/[^\s)]+/i);
+    // Check full URL (e.g. https://web.whatsapp.com)
+    const matchHttp = clean.match(/https?:\/\/[^\s)]+/i);
     if (matchHttp) return matchHttp[0];
 
-    // Domain name patterns (e.g., google.com, youtube.com, www.bing.com)
-    const matchDomain = text.match(/\b([a-zA-Z0-9-]+\.(?:com|org|net|io|dev|edu|gov|co|app|ai|me|tv|info|xyz|in|uk)(?:\/[^\s)]*)?)\b/i);
+    // Check specific known services first
+    for (const [key, target] of Object.entries(webShortcuts)) {
+      const rx = new RegExp(`\\b${key}\\b`, 'i');
+      if (rx.test(clean)) return target;
+    }
+
+    // Check domain patterns (e.g. web.whatsapp.com, google.com)
+    const matchDomain = clean.match(/\b([a-zA-Z0-9-]+\.(?:com|org|net|io|dev|edu|gov|co|app|ai|me|tv|info|xyz|in|uk)(?:\/[^\s)]*)?)\b/i);
     if (matchDomain && matchDomain[1]) {
       return `https://${matchDomain[1]}`;
     }
 
-    // Named shortcuts (e.g., "open youtube", "launch google in chrome")
-    const matchNamed = text.match(/\b(youtube|google|github|reddit|twitter|x|facebook|instagram|chatgpt|netflix|wikipedia|linkedin|amazon)\b/i);
-    if (matchNamed && matchNamed[1]) {
-      const name = matchNamed[1].toLowerCase();
-      if (shortcuts[name]) return shortcuts[name];
+    // Check generic open commands
+    const matchOpen = clean.match(/(?:open|launch|browse to|go to|navigate to)\s+([a-zA-Z0-9.-]+)/i);
+    if (matchOpen && matchOpen[1]) {
+      const target = matchOpen[1].toLowerCase();
+      if (webShortcuts[target]) return webShortcuts[target];
+      if (target.includes('.')) return `https://${target}`;
+      return `https://www.${target}.com`;
     }
 
     return null;
@@ -231,25 +248,34 @@
 
   function launchUrlInChrome(url) {
     if (!url) return false;
+    let opened = false;
 
-    // Method 1: Synthetic link click (Works across browser security contexts)
-    try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => a.remove(), 100);
-    } catch {}
-
-    // Method 2: Direct window.open fallback
+    // 1. Direct window.open within user interaction gesture
     try {
       const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (win) win.focus();
-    } catch {}
+      if (win) {
+        win.focus();
+        opened = true;
+      }
+    } catch (e) {
+      console.warn('Popup caught:', e);
+    }
 
-    return true;
+    // 2. Synthetic anchor click fallback
+    if (!opened) {
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => a.remove(), 100);
+        opened = true;
+      } catch (e) {}
+    }
+
+    return opened;
   }
 
   // ── Markdown Parser with Cyber Launch Cards ─────────────────────────────
@@ -294,21 +320,34 @@
     // If an action URL is detected in this conversation turn, attach a prominent launch box
     const detectedUrl = extractOpenUrl(text);
     if (detectedUrl) {
+      let cleanTitle = 'CHROME TAB';
+      for (const [k, v] of Object.entries(webShortcuts)) {
+        if (v === detectedUrl) {
+          cleanTitle = k.toUpperCase();
+          break;
+        }
+      }
+      if (cleanTitle === 'CHROME TAB') {
+        const m = detectedUrl.match(/https?:\/\/(?:www\.)?([^\/]+)/i);
+        if (m && m[1]) cleanTitle = m[1].toUpperCase();
+      }
+
       const launchBox = document.createElement('div');
       launchBox.className = 'launch-action-box';
       launchBox.innerHTML = `
         <div class="launch-info">
-          <span class="launch-badge">CHROME WEB PORTAL</span>
+          <span class="launch-badge">⚡ CHROME PORTAL</span>
           <span class="launch-url">${detectedUrl}</span>
         </div>
         <div class="launch-buttons-row">
           <a href="${detectedUrl}" target="_blank" rel="noopener noreferrer" class="launch-action-btn" title="Open directly in new Chrome Tab">
-            <span>OPEN IN CHROME TAB ↗</span>
+            <span>🚀 OPEN ${cleanTitle} ↗</span>
           </a>
           <button type="button" class="launch-action-btn secondary hud-trigger-btn">
             <span>HUD VIEWER 🖥️</span>
           </button>
         </div>
+        <div class="launch-hint-text">Click above to open in a new Chrome tab immediately.</div>
       `;
 
       // Attach HUD Viewer click listener

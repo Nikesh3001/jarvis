@@ -652,28 +652,49 @@ html, body {
   align-items: center;
 }
 
+.launch-hint-text {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+}
+
 .launch-action-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 9px 16px;
   background: var(--accent-cyan);
   color: #040914 !important;
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-mono);
-  font-weight: 700;
+  font-weight: 800;
   border-radius: 6px;
   text-decoration: none;
   cursor: pointer;
-  box-shadow: 0 0 12px var(--accent-glow);
+  box-shadow: 0 0 16px var(--accent-cyan);
   transition: all 0.2s ease;
   border: none;
+  animation: launchPulse 2s infinite ease-in-out;
+}
+
+@keyframes launchPulse {
+  0%, 100% {
+    box-shadow: 0 0 12px var(--accent-cyan);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 24px var(--accent-cyan), 0 0 35px var(--accent-glow);
+    transform: scale(1.02);
+  }
 }
 
 .launch-action-btn:hover {
   background: #ffffff;
-  box-shadow: 0 0 20px #ffffff;
-  transform: translateY(-1px);
+  color: #000000 !important;
+  box-shadow: 0 0 30px #ffffff;
+  transform: translateY(-2px) scale(1.03);
 }
 
 .launch-action-btn.secondary {
