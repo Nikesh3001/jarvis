@@ -1,511 +1,572 @@
-/* ── FRIDAY Dashboard – Frontend App ─────────────────────────────────────── */
-(() => {
-  "use strict";
+/**
+ * FRIDAY 3D Spatial Holographic Controller & Neural Interface
+ */
 
-  // ── Elements ────────────────────────────────────────────────────────────
-  const $ = (s) => document.querySelector(s);
-  const messagesEl  = $("#messages");
-  const welcomeEl   = $("#welcome");
-  const inputEl     = $("#userInput");
-  const sendBtn     = $("#sendBtn");
-  const modelBadge  = $("#modelBadge");
-  const statusDot   = $("#statusDot");
+(function () {
+  'use strict';
+
+  // Helper
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  // DOM Elements
+  const messagesEl = $('#messages');
+  const inputEl = $('#userInput');
+  const sendBtn = $('#sendBtn');
+  const welcomeEl = $('#welcome');
+  const modelBadge = $('#modelBadge');
+  const statusDot = $('#statusDot');
+  const audioWaveCanvas = $('#audioWaveCanvas');
+  const waveCtx = audioWaveCanvas ? audioWaveCanvas.getContext('2d') : null;
 
   const els = {
-    cpuVal:    $("#cpuVal"),    cpuBar:    $("#cpuBar"),
-    ramVal:    $("#ramVal"),    ramBar:    $("#ramBar"),
-    diskVal:   $("#diskVal"),   diskBar:   $("#diskBar"),
-    providerVal: $("#providerVal"), toolsVal:  $("#toolsVal"),
-    callsVal:  $("#callsVal"),  errorsVal: $("#errorsVal"),
-    aiTimeVal: $("#aiTimeVal"), uptimeVal: $("#uptimeVal"),
-    commandsVal: $("#commandsVal"), versionVal: $("#versionVal"),
-    starkVal:  $("#starkVal"),  safeVal:   $("#safeVal"),
+    cpuVal: $('#cpuVal'),
+    cpuBar: $('#cpuBar'),
+    ramVal: $('#ramVal'),
+    ramBar: $('#ramBar'),
+    diskVal: $('#diskVal'),
+    diskBar: $('#diskBar'),
+    providerVal: $('#providerVal'),
+    toolsVal: $('#toolsVal'),
+    callsVal: $('#callsVal'),
+    errorsVal: $('#errorsVal'),
+    uptimeVal: $('#uptimeVal'),
+    starkVal: $('#starkVal'),
+    safeVal: $('#safeVal'),
   };
 
-  const voiceToggle  = $("#voiceToggle");
-  const voiceStopBtn = $("#voiceStopBtn");
-  const voiceSel     = $("#voiceSelect");
-  const voiceSpeed   = $("#voiceSpeed");
-  const voiceSpeedVal = $("#voiceSpeedVal");
-
-  // ── State ───────────────────────────────────────────────────────────────
+  // State
   let ws = null;
+  let wsConnected = false;
   let sending = false;
-  let currentAssistantBubble = null;
-  let currentText = "";
-
-  // ── Voice / TTS State ───────────────────────────────────────────────────
-  const synth = window.speechSynthesis;
   let voiceEnabled = true;
   let selectedVoice = null;
   let voiceRate = 1.0;
+  let isSpeaking = false;
+  const synth = window.speechSynthesis;
 
-  // ── Markdown-lite renderer ──────────────────────────────────────────────
-  function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
+  // ── 3D Spatial Hologram Controls ─────────────────────────────────────────
 
-  function renderMarkdown(text) {
-    if (!text) return "";
-    const codeBlocks = [];
-    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-      const escaped = escapeHtml(code);
-      const idx = codeBlocks.length;
-      codeBlocks.push(`<pre><code class="lang-${escapeHtml(lang)}">${escaped}</code></pre>`);
-      return `\x00CODEBLOCK_${idx}\x00`;
+  // Mode Switcher (Arc Core / Global Mesh / Mark L Armor)
+  $$('.mode-3d-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      $$('.mode-3d-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.mode;
+      if (window.friday3D) {
+        window.friday3D.setMode(mode);
+      }
     });
-    text = escapeHtml(text);
-    text = text.replace(/\x00CODEBLOCK_(\d+)\x00/g, (_, idx) => codeBlocks[parseInt(idx)]);
-    text = text.replace(/`([^`]+)`/g, "<code>$1</code>");
-    text = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    text = text.replace(/\*(.+?)\*/g, "<em>$1</em>");
-    return text;
+  });
+
+  // Camera Presets
+  $$('.cam-preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const preset = btn.dataset.preset;
+      if (preset !== 'orbit') {
+        $$('.cam-preset-btn').forEach((b) => {
+          if (b.dataset.preset !== 'orbit') b.classList.remove('active');
+        });
+        btn.classList.add('active');
+      }
+
+      if (window.friday3D) {
+        if (preset === 'orbit') {
+          const auto = window.friday3D.toggleAutoRotate();
+          btn.classList.toggle('active', auto);
+          btn.textContent = auto ? 'Orbit: ON' : 'Orbit: OFF';
+        } else {
+          window.friday3D.setCameraPreset(preset);
+        }
+      }
+    });
+  });
+
+  // Explode Slider for Mark L Armor
+  const explodeSlider = $('#explodeSlider');
+  const explodeVal = $('#explodeVal');
+  if (explodeSlider) {
+    explodeSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      if (explodeVal) explodeVal.textContent = Math.round(val * 100) + '%';
+      if (window.friday3D) {
+        window.friday3D.setExplodeAmount(val);
+      }
+    });
   }
 
-  function stripForSpeech(text) {
-    if (!text) return "";
-    let t = text;
-    t = t.replace(/```[\s\S]*?```/g, "");
-    t = t.replace(/`[^`]+`/g, "");
-    t = t.replace(/\*\*(.+?)\*\*/g, "$1");
-    t = t.replace(/\*(.+?)\*/g, "$1");
-    t = t.replace(/#{1,6}\s*/g, "");
-    t = t.replace(/[>\-|]/g, "");
-    t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-    t = t.replace(/\n/g, " ");
-    t = t.replace(/\s+/g, " ").trim();
-    if (t.length > 2000) t = t.substring(0, 2000) + "... truncated for speech";
-    return t;
+  // Collapsible HUD Panels
+  const toggleLeftBtn = $('#toggleLeftHud');
+  const leftHud = $('#leftHud');
+  if (toggleLeftBtn && leftHud) {
+    toggleLeftBtn.addEventListener('click', () => {
+      leftHud.classList.toggle('collapsed');
+      toggleLeftBtn.textContent = leftHud.classList.contains('collapsed') ? '▶' : '◀';
+    });
   }
 
-  // ── Voice / TTS Functions ───────────────────────────────────────────────
+  const toggleRightBtn = $('#toggleRightHud');
+  const rightHud = $('#rightHud');
+  if (toggleRightBtn && rightHud) {
+    toggleRightBtn.addEventListener('click', () => {
+      rightHud.classList.toggle('collapsed');
+      toggleRightBtn.textContent = rightHud.classList.contains('collapsed') ? '◀' : '▶';
+    });
+  }
+
+  // Close Hotspot Inspection Card
+  const closeInspectBtn = $('#closeInspectCard');
+  const inspectCard = $('#hotspot-inspect-card');
+  if (closeInspectBtn && inspectCard) {
+    closeInspectBtn.addEventListener('click', () => {
+      inspectCard.classList.remove('visible');
+    });
+  }
+
+  // Stark Mode Toggle
+  if (els.starkVal) {
+    els.starkVal.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'stark' }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          fetchStats();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  // Safe Mode Toggle
+  if (els.safeVal) {
+    els.safeVal.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'safe' }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          fetchStats();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  // ── Audio Reactive Waveform ──────────────────────────────────────────────
+  let wavePhase = 0;
+  function drawAudioWave() {
+    requestAnimationFrame(drawAudioWave);
+    if (!waveCtx || !audioWaveCanvas) return;
+
+    const w = audioWaveCanvas.width;
+    const h = audioWaveCanvas.height;
+    waveCtx.clearRect(0, 0, w, h);
+
+    wavePhase += isSpeaking ? 0.25 : 0.04;
+    const amp = isSpeaking ? 8 : 2;
+
+    waveCtx.beginPath();
+    waveCtx.strokeStyle = isSpeaking ? '#00f0ff' : '#0284c7';
+    waveCtx.lineWidth = 1.5;
+
+    for (let x = 0; x < w; x++) {
+      const y = h / 2 + Math.sin(x * 0.15 + wavePhase) * amp;
+      if (x === 0) waveCtx.moveTo(x, y);
+      else waveCtx.lineTo(x, y);
+    }
+    waveCtx.stroke();
+  }
+  drawAudioWave();
+
+  // ── Voice / TTS Engine ───────────────────────────────────────────────────
+  const voiceToggle = $('#voiceToggle');
+  const voiceStopBtn = $('#voiceStopBtn');
+  const voiceSel = $('#voiceSelect');
+  const voiceSpeed = $('#voiceSpeed');
+  const voiceSpeedVal = $('#voiceSpeedVal');
+
+  if (voiceToggle) {
+    voiceToggle.addEventListener('click', () => {
+      voiceEnabled = !voiceEnabled;
+      voiceToggle.classList.toggle('active', voiceEnabled);
+      if (!voiceEnabled) stopSpeaking();
+    });
+  }
+
+  if (voiceStopBtn) {
+    voiceStopBtn.addEventListener('click', stopSpeaking);
+  }
+
+  if (voiceSpeed) {
+    voiceSpeed.addEventListener('input', () => {
+      voiceRate = parseFloat(voiceSpeed.value);
+      if (voiceSpeedVal) voiceSpeedVal.textContent = voiceRate.toFixed(1) + 'x';
+    });
+  }
+
+  function loadVoices() {
+    if (!synth || !voiceSel) return;
+    const voices = synth.getVoices();
+    if (!voices.length) return;
+    voiceSel.innerHTML = '';
+
+    const englishVoices = voices.filter((v) => v.lang.startsWith('en'));
+    const list = englishVoices.length ? englishVoices : voices;
+
+    list.forEach((v, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${v.name} (${v.lang})`;
+      voiceSel.appendChild(opt);
+      if (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || i === 0) {
+        if (!selectedVoice) {
+          selectedVoice = v;
+          opt.selected = true;
+        }
+      }
+    });
+
+    voiceSel.addEventListener('change', () => {
+      selectedVoice = list[voiceSel.value] || null;
+    });
+  }
+
+  if (synth) {
+    synth.onvoiceschanged = loadVoices;
+    loadVoices();
+  }
+
   function speak(text) {
-    if (!voiceEnabled || !synth || !text) return;
-    synth.cancel();
-    clearSpeakingIndicator();
-    const clean = stripForSpeech(text);
-    if (!clean) return;
-    const MAX_CHUNK = 200;
-    const chunks = [];
-    if (clean.length <= MAX_CHUNK) {
-      chunks.push(clean);
-    } else {
-      const sentences = clean.replace(/([.!?])\s+/g, "$1|").replace(/\n/g, "|").split("|");
-      let buf = "";
-      for (const s of sentences) {
-        if (buf.length + s.length > MAX_CHUNK && buf) {
-          chunks.push(buf);
-          buf = "";
-        }
-        buf += s;
-      }
-      if (buf) chunks.push(buf);
-    }
-    const lastBubble = messagesEl.querySelector(".message.assistant:last-child .bubble");
-    let speakingEl = null;
-    let chunkIdx = 0;
-    function speakChunk() {
-      if (chunkIdx >= chunks.length) {
-        clearSpeakingIndicator();
-        return;
-      }
-      const utter = new SpeechSynthesisUtterance(chunks[chunkIdx]);
-      if (selectedVoice) utter.voice = selectedVoice;
-      utter.rate = voiceRate;
-      utter.pitch = 1.0;
-      utter.volume = 1.0;
-      utter.onstart = () => {
-        if (!speakingEl && lastBubble) {
-          speakingEl = lastBubble;
-          speakingEl.classList.add("speaking");
-        }
-      };
-      utter.onend = () => {
-        chunkIdx++;
-        speakChunk();
-      };
-      utter.onerror = () => {
-        clearSpeakingIndicator();
-      };
-      synth.speak(utter);
-    }
-    speakChunk();
-  }
+    if (!voiceEnabled || !synth) return;
+    stopSpeaking();
 
-  function clearSpeakingIndicator() {
-    const el = messagesEl.querySelector(".bubble.speaking");
-    if (el) el.classList.remove("speaking");
+    // Clean text of markdown
+    const clean = text
+      .replace(/```[\s\S]*?```/g, 'Code block omitted.')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/[*#_~>]/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .trim();
+
+    if (!clean) return;
+
+    const utter = new SpeechSynthesisUtterance(clean);
+    if (selectedVoice) utter.voice = selectedVoice;
+    utter.rate = voiceRate;
+    utter.pitch = 1.0;
+
+    utter.onstart = () => {
+      isSpeaking = true;
+      if (window.friday3D) window.friday3D.setAudioReactive(true, 1.0);
+    };
+
+    utter.onend = () => {
+      isSpeaking = false;
+      if (window.friday3D) window.friday3D.setAudioReactive(false, 0);
+    };
+
+    utter.onerror = () => {
+      isSpeaking = false;
+      if (window.friday3D) window.friday3D.setAudioReactive(false, 0);
+    };
+
+    synth.speak(utter);
   }
 
   function stopSpeaking() {
     if (synth) synth.cancel();
-    clearSpeakingIndicator();
+    isSpeaking = false;
+    if (window.friday3D) window.friday3D.setAudioReactive(false, 0);
   }
 
-  function loadVoices() {
-    if (!voiceSel) return;
-    voiceSel.innerHTML = "";
-    const voices = synth.getVoices();
-    const english = voices.filter(v => v.lang.startsWith("en"));
-    const others = voices.filter(v => !v.lang.startsWith("en"));
-    const sorted = [...english, ...others];
+  // ── Markdown Parser ──────────────────────────────────────────────────────
+  function renderMarkdown(md) {
+    let out = md
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
 
-    sorted.forEach((v, i) => {
-      const opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = `${v.name} (${v.lang})`;
-      opt.dataset.voiceIndex = voices.indexOf(v);
-      voiceSel.appendChild(opt);
+    // Code blocks
+    out = out.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+      return `<pre><code class="lang-${lang}">${code.trim()}</code></pre>`;
     });
 
-    const defaultIdx = [
-      sorted.findIndex(v => v.name.includes("Google") && v.lang.startsWith("en")),
-      sorted.findIndex(v => v.name.includes("Zira")),
-      sorted.findIndex(v => v.name.includes("Microsoft") && v.lang.startsWith("en")),
-      0
-    ].find(i => i >= 0) ?? 0;
-    if (defaultIdx >= 0 && sorted[defaultIdx]) {
-      voiceSel.selectedIndex = defaultIdx;
-      selectedVoice = sorted[defaultIdx];
-    }
+    // Inline code
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Bold / italic
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // Headers
+    out = out.replace(/^### (.*$)/gim, '<h4 style="color:var(--accent);margin:6px 0;">$1</h4>');
+    out = out.replace(/^## (.*$)/gim, '<h3 style="color:var(--accent);margin:8px 0;">$1</h3>');
+
+    // Lists
+    out = out.replace(/^\s*-\s+(.*$)/gim, '<li style="margin-left:14px;">$1</li>');
+
+    // Line breaks
+    out = out.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+    return out;
   }
 
-  if (synth) {
-    loadVoices();
-    if (synth.onvoiceschanged !== undefined) {
-      synth.onvoiceschanged = loadVoices;
-    }
-  }
+  function addMessage(role, text) {
+    if (welcomeEl) welcomeEl.style.display = 'none';
 
-  if (voiceToggle) {
-    voiceToggle.addEventListener("click", () => {
-      voiceEnabled = !voiceEnabled;
-      voiceToggle.classList.toggle("active", voiceEnabled);
-      voiceToggle.innerHTML = voiceEnabled
-        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
-      if (!voiceEnabled) stopSpeaking();
-    });
-    voiceToggle.classList.add("active");
-  }
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
 
-  if (voiceStopBtn) {
-    voiceStopBtn.addEventListener("click", stopSpeaking);
-  }
+    const label = document.createElement('span');
+    label.className = 'message-label';
+    label.textContent = role === 'user' ? 'Operator' : 'FRIDAY';
+    msg.appendChild(label);
 
-  if (voiceSel) {
-    voiceSel.addEventListener("change", () => {
-      const voices = synth.getVoices();
-      const idx = parseInt(voiceSel.selectedOptions[0]?.dataset.voiceIndex);
-      if (!isNaN(idx) && voices[idx]) {
-        selectedVoice = voices[idx];
-      }
-    });
-  }
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = renderMarkdown(text);
+    msg.appendChild(bubble);
 
-  if (voiceSpeed) {
-    voiceSpeed.addEventListener("input", () => {
-      voiceRate = parseFloat(voiceSpeed.value);
-      if (voiceSpeedVal) voiceSpeedVal.textContent = voiceRate.toFixed(1) + "x";
-    });
-  }
-
-  // ── Messages ────────────────────────────────────────────────────────────
-  function addMessage(role, content) {
-    if (welcomeEl) welcomeEl.remove();
-
-    const div = document.createElement("div");
-    div.className = `message ${role}`;
-
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
-    avatar.textContent = role === "user" ? "U" : "F";
-
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-    bubble.innerHTML = renderMarkdown(content);
-
-    div.appendChild(avatar);
-    div.appendChild(bubble);
-    messagesEl.appendChild(div);
-    scrollToBottom();
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
     return bubble;
   }
 
   function addTypingIndicator() {
-    if (welcomeEl) welcomeEl.remove();
-
-    const div = document.createElement("div");
-    div.className = "message assistant";
-    div.id = "typingMsg";
-
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
-    avatar.textContent = "F";
-
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-    bubble.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
-
-    div.appendChild(avatar);
-    div.appendChild(bubble);
-    messagesEl.appendChild(div);
-    scrollToBottom();
-    return bubble;
-  }
-
-  function removeTypingIndicator() {
-    const el = document.getElementById("typingMsg");
-    if (el) el.remove();
-  }
-
-  function scrollToBottom() {
+    const el = document.createElement('div');
+    el.className = 'message assistant typing';
+    el.id = 'typingIndicator';
+    el.innerHTML = '<span class="message-label">FRIDAY</span><div class="bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
+    messagesEl.appendChild(el);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // ── WebSocket ───────────────────────────────────────────────────────────
+  function removeTypingIndicator() {
+    const el = $('#typingIndicator');
+    if (el) el.remove();
+  }
+
+  // ── WebSocket & Chat Transmit ────────────────────────────────────────────
+
   function connectWS() {
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    ws = new WebSocket(`${proto}//${location.host}/ws/chat`);
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${proto}//${location.host}/ws/chat`;
 
-    ws.onopen = () => {
-      statusDot.style.background = "var(--green)";
-      statusDot.style.boxShadow = "0 0 6px var(--green)";
-      statusDot.title = "Connected";
-    };
+    try {
+      ws = new WebSocket(wsUrl);
 
-    ws.onclose = () => {
-      statusDot.style.background = "var(--red)";
-      statusDot.style.boxShadow = "0 0 6px var(--red)";
-      statusDot.title = "Disconnected – retrying...";
-      setTimeout(connectWS, 3000);
-    };
+      ws.onopen = () => {
+        wsConnected = true;
+        if (statusDot) {
+          statusDot.style.background = 'var(--green)';
+          statusDot.style.boxShadow = '0 0 10px var(--green)';
+        }
+      };
 
-    ws.onerror = () => {
-      statusDot.style.background = "var(--red)";
-    };
+      ws.onclose = () => {
+        wsConnected = false;
+        if (statusDot) {
+          statusDot.style.background = 'var(--yellow)';
+          statusDot.style.boxShadow = '0 0 10px var(--yellow)';
+        }
+        setTimeout(connectWS, 3000);
+      };
 
-    ws.onmessage = (evt) => {
-      try {
-        const data = JSON.parse(evt.data);
+      let streamingBubble = null;
+      let streamedContent = '';
 
-        if (data.type === "token") {
-          if (!currentAssistantBubble) {
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+
+          if (data.type === 'token') {
             removeTypingIndicator();
-            currentAssistantBubble = addMessage("assistant", "");
-            currentText = "";
-          }
-          currentText += data.content;
-          currentAssistantBubble.innerHTML = renderMarkdown(currentText);
-          scrollToBottom();
-          return;
-        }
-
-        if (data.type === "done") {
-          const finalText = data.content || currentText;
-          if (currentAssistantBubble) {
-            currentAssistantBubble.innerHTML = renderMarkdown(finalText);
-          } else {
+            if (!streamingBubble) {
+              streamingBubble = addMessage('assistant', '');
+              if (window.friday3D) window.friday3D.setAudioReactive(true, 0.7);
+            }
+            streamedContent += data.content;
+            streamingBubble.innerHTML = renderMarkdown(streamedContent);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          } else if (data.type === 'done') {
             removeTypingIndicator();
-            addMessage("assistant", finalText || "(no response)");
+            if (streamingBubble) {
+              streamingBubble.innerHTML = renderMarkdown(streamedContent || data.content);
+            } else {
+              addMessage('assistant', data.content);
+            }
+            speak(streamedContent || data.content);
+            streamingBubble = null;
+            streamedContent = '';
+            resetSend();
+          } else if (data.type === 'error') {
+            removeTypingIndicator();
+            addMessage('assistant', `Diagnostic Notice: ${data.content}`);
+            streamingBubble = null;
+            streamedContent = '';
+            resetSend();
           }
-          if (!finalText.startsWith("Error:")) {
-            speak(finalText);
-          }
-          currentAssistantBubble = null;
-          currentText = "";
-          resetSend();
-          return;
+        } catch {
+          // ignore
         }
-
-        if (data.type === "error") {
-          removeTypingIndicator();
-          addMessage("assistant", `Error: ${data.content}`);
-          currentAssistantBubble = null;
-          currentText = "";
-          resetSend();
-          return;
-        }
-      } catch (e) {
-        removeTypingIndicator();
-        currentAssistantBubble = null;
-        currentText = "";
-        resetSend();
-      }
-    };
+      };
+    } catch {
+      wsConnected = false;
+    }
   }
-
-  // ── Send message ────────────────────────────────────────────────────────
-  function resetSend() {
-    sending = false;
-    sendBtn.disabled = false;
-    inputEl.focus();
-  }
-
-  const STOP_WORDS = ["stop", "stop speaking", "shut up", "shutup", "be quiet", "silence", "shush"];
 
   async function sendMessage() {
-    const text = inputEl.value.trim();
+    const text = (inputEl.value || '').trim();
     if (!text || sending) return;
-
-    const lower = text.toLowerCase();
-    const isStop = STOP_WORDS.some(w => lower === w || lower.startsWith(w + " "));
-    stopSpeaking();
-    if (isStop) {
-      addMessage("user", text);
-      inputEl.value = "";
-      inputEl.style.height = "auto";
-      return;
-    }
 
     sending = true;
     sendBtn.disabled = true;
-    addMessage("user", text);
-    inputEl.value = "";
-    inputEl.style.height = "auto";
+    addMessage('user', text);
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
     addTypingIndicator();
+
+    if (window.friday3D) {
+      window.friday3D.setAudioReactive(true, 0.5);
+    }
 
     if (ws && ws.readyState === WebSocket.OPEN) {
       try {
         ws.send(JSON.stringify({ message: text }));
-      } catch (e) {
-        doRestChat(text);
+        return;
+      } catch {
+        // Fallback to REST
       }
-    } else {
-      await doRestChat(text);
     }
-  }
 
-  async function doRestChat(text) {
+    // REST Fallback
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text }),
       });
       const data = await res.json();
       removeTypingIndicator();
       if (data.ok) {
-        addMessage("assistant", data.response);
-        if (!data.response.startsWith("Error:")) speak(data.response);
+        addMessage('assistant', data.response);
+        speak(data.response);
       } else {
-        addMessage("assistant", `Error: ${data.error}`);
+        addMessage('assistant', `Notice: ${data.error}`);
       }
     } catch (e) {
       removeTypingIndicator();
-      addMessage("assistant", `Network error: ${e.message}`);
+      addMessage('assistant', `Connection interrupted: ${e.message}`);
     } finally {
       resetSend();
     }
   }
 
-  // ── Stats polling ───────────────────────────────────────────────────────
-  function colorForPercent(pct) {
-    if (pct < 60) return "green";
-    if (pct < 85) return "yellow";
-    return "red";
+  function resetSend() {
+    sending = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+    fetchStats();
+  }
+
+  // ── Telemetry & Stats Polling ────────────────────────────────────────────
+
+  function colorForPct(pct) {
+    if (pct < 60) return 'green';
+    if (pct < 85) return 'yellow';
+    return 'red';
   }
 
   async function fetchStats() {
     try {
-      const res = await fetch("/api/status");
+      const res = await fetch('/api/status');
       const s = await res.json();
       if (!s.ok) return;
 
-      const cpuPct = Math.round(s.cpu_percent);
-      els.cpuVal.textContent = cpuPct + "%";
-      els.cpuBar.style.width = cpuPct + "%";
-      els.cpuBar.className = `progress-fill ${colorForPercent(cpuPct)}`;
-
-      const ramPct = Math.round(s.ram_percent);
-      els.ramVal.textContent = `${s.ram_used_gb}/${s.ram_total_gb} GB`;
-      els.ramBar.style.width = ramPct + "%";
-      els.ramBar.className = `progress-fill ${colorForPercent(ramPct)}`;
-
-      const diskPct = Math.round(s.disk_percent);
-      els.diskVal.textContent = `${s.disk_used_gb}/${s.disk_total_gb} GB`;
-      els.diskBar.style.width = diskPct + "%";
-      els.diskBar.className = `progress-fill ${colorForPercent(diskPct)}`;
-
-      els.providerVal.textContent = s.provider;
-      els.toolsVal.textContent = s.tools_registered;
-      els.callsVal.textContent = s.total_calls;
-      els.errorsVal.textContent = s.total_errors;
-      els.aiTimeVal.textContent = s.total_time + "s";
-
-      const upMin = s.uptime_minutes;
-      const h = Math.floor(upMin / 60);
-      const m = upMin % 60;
-      els.uptimeVal.textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
-      els.commandsVal.textContent = s.commands_run;
-      els.versionVal.textContent = "v" + s.version;
-
-      els.starkVal.textContent = s.stark_mode ? "ENGAGED" : "STANDBY";
-      els.starkVal.className = `stat-value ${s.stark_mode ? "yellow" : ""}`;
-      els.safeVal.textContent = s.safe_mode ? "ON" : "OFF";
-      els.safeVal.className = `stat-value ${s.safe_mode ? "green" : "red"}`;
-
-      modelBadge.textContent = s.model;
-    } catch (e) {
-    }
-  }
-
-  // ── Model switcher ──────────────────────────────────────────────────────
-  function switchModel(btn, model) {
-    document.querySelectorAll("#modelSwitcher .toggle-btn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    fetch("/api/model", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model }),
-    }).then(() => { modelBadge.textContent = model; }).catch(() => {});
-  }
-
-  document.querySelectorAll("#modelSwitcher .toggle-btn").forEach((btn) => {
-    btn.addEventListener("click", () => switchModel(btn, btn.dataset.model));
-  });
-
-  (async function loadModels() {
-    try {
-      const res = await fetch("/api/models");
-      const data = await res.json();
-      if (data.ok && data.models && data.models.length) {
-        const switcher = $("#modelSwitcher");
-        switcher.innerHTML = "";
-        data.models.slice(0, 8).forEach((model) => {
-          const btn = document.createElement("button");
-          btn.className = "toggle-btn" + (model === data.current ? " active" : "");
-          btn.dataset.model = model;
-          btn.textContent = model.length > 22 ? model.slice(0, 20) + "\u2026" : model;
-          btn.addEventListener("click", () => switchModel(btn, model));
-          switcher.appendChild(btn);
-        });
+      if (els.cpuVal && els.cpuBar) {
+        const c = Math.round(s.cpu_percent);
+        els.cpuVal.textContent = c + '%';
+        els.cpuBar.style.width = c + '%';
+        els.cpuBar.className = `progress-fill ${colorForPct(c)}`;
       }
-    } catch (e) { /* silent */ }
-  })();
 
-  // ── Input handling ──────────────────────────────────────────────────────
-  inputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
+      if (els.ramVal && els.ramBar) {
+        const r = Math.round(s.ram_percent);
+        els.ramVal.textContent = `${s.ram_used_gb}/${s.ram_total_gb} GB`;
+        els.ramBar.style.width = r + '%';
+        els.ramBar.className = `progress-fill ${colorForPct(r)}`;
+      }
+
+      if (els.diskVal && els.diskBar) {
+        const d = Math.round(s.disk_percent);
+        els.diskVal.textContent = `${s.disk_used_gb}/${s.disk_total_gb} GB`;
+        els.diskBar.style.width = d + '%';
+        els.diskBar.className = `progress-fill ${colorForPct(d)}`;
+      }
+
+      if (els.providerVal) els.providerVal.textContent = s.provider;
+      if (els.toolsVal) els.toolsVal.textContent = `${s.tools_registered} Modules`;
+      if (els.callsVal) els.callsVal.textContent = s.total_calls;
+      if (els.errorsVal) els.errorsVal.textContent = s.total_errors;
+
+      if (els.uptimeVal) {
+        const min = s.uptime_minutes;
+        const h = Math.floor(min / 60);
+        const m = min % 60;
+        els.uptimeVal.textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      }
+
+      if (els.starkVal) {
+        els.starkVal.textContent = s.stark_mode ? 'ENGAGED' : 'STANDBY';
+        els.starkVal.className = `stat-value clickable ${s.stark_mode ? 'yellow' : ''}`;
+        if (window.friday3D) window.friday3D.setStarkTheme(s.stark_mode);
+      }
+
+      if (els.safeVal) {
+        els.safeVal.textContent = s.safe_mode ? 'ON' : 'OFF';
+        els.safeVal.className = `stat-value clickable ${s.safe_mode ? 'green' : 'red'}`;
+      }
+
+      if (modelBadge) modelBadge.textContent = s.model;
+    } catch {
+      // ignore
     }
+  }
+
+  // ── Model Switcher ───────────────────────────────────────────────────────
+  function switchModel(btn, model) {
+    $$('#modelSwitcher .toggle-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    fetch('/api/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+    })
+      .then(() => {
+        if (modelBadge) modelBadge.textContent = model;
+      })
+      .catch(() => {});
+  }
+
+  $$('#modelSwitcher .toggle-btn').forEach((btn) => {
+    btn.addEventListener('click', () => switchModel(btn, btn.dataset.model));
   });
 
-  inputEl.addEventListener("input", () => {
-    inputEl.style.height = "auto";
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
-  });
-
-  sendBtn.addEventListener("click", sendMessage);
-
-  // ── Quick Action Buttons ────────────────────────────────────────────────
-  document.querySelectorAll(".tool-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const prompt = btn.dataset.prompt || "";
-      const text = btn.dataset.text || "";
+  // ── Quick Actions ────────────────────────────────────────────────────────
+  $$('.tool-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const prompt = btn.dataset.prompt || '';
+      const text = btn.dataset.text || '';
       if (prompt) {
-        inputEl.value = prompt + " ";
+        inputEl.value = prompt + ' ';
         inputEl.focus();
         inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
       } else if (text) {
@@ -515,36 +576,23 @@
     });
   });
 
-  // ── Init ────────────────────────────────────────────────────────────────
-  connectWS();
-  fetchStats();
-  setInterval(fetchStats, 5000);
-  inputEl.focus();
-
-  window.addEventListener("beforeunload", () => {
-    if (synth) synth.cancel();
+  // ── Keyboard & Input Resizing ────────────────────────────────────────────
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   });
 
-  try {
-    const saved = JSON.parse(localStorage.getItem("friday_voice") || "{}");
-    if (saved.enabled !== undefined) {
-      voiceEnabled = saved.enabled;
-      if (voiceToggle) voiceToggle.classList.toggle("active", voiceEnabled);
-    }
-    if (saved.rate) {
-      voiceRate = saved.rate;
-      if (voiceSpeed) voiceSpeed.value = voiceRate;
-      if (voiceSpeedVal) voiceSpeedVal.textContent = voiceRate.toFixed(1) + "x";
-    }
-  } catch (e) { /* ignore */ }
-  const saveVoiceSettings = () => {
-    try { localStorage.setItem("friday_voice", JSON.stringify({ enabled: voiceEnabled, rate: voiceRate })); } catch (e) {}
-  };
-  if (voiceToggle) voiceToggle.addEventListener("click", saveVoiceSettings);
-  if (voiceSpeed) voiceSpeed.addEventListener("input", saveVoiceSettings);
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+  });
 
-  if (!synth) {
-    const voiceSection = $("#voiceSection");
-    if (voiceSection) voiceSection.style.display = "none";
-  }
+  sendBtn.addEventListener('click', sendMessage);
+
+  // ── Initialize ───────────────────────────────────────────────────────────
+  connectWS();
+  fetchStats();
+  setInterval(fetchStats, 6000);
 })();

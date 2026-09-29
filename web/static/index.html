@@ -8,165 +8,238 @@
   <meta property="og:title" content="FRIDAY Dashboard">
   <meta property="og:description" content="Female Replacement Intelligent Digital Assistant Youth - Interactive AI Dashboard">
   <link rel="stylesheet" href="/static/style.css">
+  <!-- Local Three.js build for offline 3D WebGL rendering -->
+  <script src="/static/three.min.js"></script>
 </head>
-<body>
-  <div class="app">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-left">
-        <div class="arc-reactor"></div>
-        <h1><span>F</span>.R.I.D.A.Y. <span>Dashboard</span></h1>
+<body class="spatial-app">
+  <!-- 3D WebGL Canvas Layer -->
+  <div id="threejs-container" class="threejs-container">
+    <canvas id="threejs-canvas"></canvas>
+  </div>
+
+  <!-- Interactive 3D Hotspot Hover Tooltip -->
+  <div id="hotspot-tooltip" class="hotspot-tooltip"></div>
+
+  <!-- 3D Component Inspection Glass Overlay -->
+  <div id="hotspot-inspect-card" class="hotspot-inspect-card">
+    <div class="inspect-header">
+      <div class="inspect-beacon"></div>
+      <span class="inspect-tag">TELEMETRY DIAGNOSTIC</span>
+      <button class="inspect-close" id="closeInspectCard">&times;</button>
+    </div>
+    <h4 id="hotspot-title">Subsystem Focus</h4>
+    <p id="hotspot-desc">Telemetry parameters aligned.</p>
+  </div>
+
+  <!-- Floating Holographic HUD Interface -->
+  <div class="hud-overlay">
+    <!-- Top Spatial Navigation Bar -->
+    <header class="hud-top-bar">
+      <div class="hud-left-brand">
+        <div class="mini-arc-reactor"></div>
+        <div class="brand-text">
+          <h1><span>F</span>.R.I.D.A.Y. <span class="spatial-tag">SPATIAL 3D</span></h1>
+          <span class="brand-sub">Neural Hologram Architecture · Mark V</span>
+        </div>
       </div>
-      <div class="header-right">
-        <span class="model-badge" id="modelBadge">loading...</span>
-        <div class="status-dot" id="statusDot" title="Connected"></div>
+
+      <!-- 3D Hologram Switcher -->
+      <div class="hologram-mode-selector">
+        <button class="mode-3d-btn active" data-mode="reactor" title="Inspect Arc Reactor Core">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/></svg>
+          Arc Core
+        </button>
+        <button class="mode-3d-btn" data-mode="globe" title="Global Satellite Telemetry">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Global Mesh
+        </button>
+        <button class="mode-3d-btn" data-mode="armor" title="Mark L Exoskeleton Matrix">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Mark L Armor
+        </button>
+      </div>
+
+      <!-- Camera View Presets -->
+      <div class="cam-presets-group">
+        <span class="preset-label">VIEW:</span>
+        <button class="cam-preset-btn active" data-preset="front">Front</button>
+        <button class="cam-preset-btn" data-preset="iso">Iso 45°</button>
+        <button class="cam-preset-btn" data-preset="top">Top</button>
+        <button class="cam-preset-btn" data-preset="orbit" id="autoRotateBtn">Orbit</button>
+      </div>
+
+      <!-- Audio Reactive Wave Visualizer & Status -->
+      <div class="hud-top-right">
+        <div class="audio-visualizer-box" title="Real-time Voice Waveform">
+          <canvas id="audioWaveCanvas" width="90" height="22"></canvas>
+        </div>
+        <span class="model-badge" id="modelBadge">gemini-3.1-flash-lite</span>
+        <div class="status-dot" id="statusDot" title="Live Link Active"></div>
       </div>
     </header>
 
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <!-- System Stats -->
-      <div class="sidebar-section">
-        <h3>System</h3>
-        <div class="stat-row">
-          <span class="stat-label">CPU</span>
-          <span class="stat-value" id="cpuVal">--%</span>
+    <!-- Main Spatial Stage: Collapsible Left/Right Glass Panels -->
+    <div class="hud-workspace">
+      <!-- Left HUD: Telemetry & Diagnostic Console -->
+      <aside class="hud-panel hud-left" id="leftHud">
+        <div class="panel-header">
+          <h3><span>SYSTEM</span> TELEMETRY</h3>
+          <button class="panel-collapse-btn" id="toggleLeftHud" title="Toggle Panel">◀</button>
         </div>
-        <div class="progress-bar"><div class="progress-fill green" id="cpuBar" style="width:0%"></div></div>
 
-        <div class="stat-row" style="margin-top:8px">
-          <span class="stat-label">RAM</span>
-          <span class="stat-value" id="ramVal">--</span>
-        </div>
-        <div class="progress-bar"><div class="progress-fill green" id="ramBar" style="width:0%"></div></div>
+        <div class="panel-scroll-content">
+          <!-- Hardware Readings -->
+          <div class="hud-card">
+            <div class="card-title">VITAL METRICS</div>
+            <div class="stat-row">
+              <span class="stat-label">CPU Compute</span>
+              <span class="stat-value" id="cpuVal">--%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill green" id="cpuBar" style="width:0%"></div></div>
 
-        <div class="stat-row" style="margin-top:8px">
-          <span class="stat-label">Disk</span>
-          <span class="stat-value" id="diskVal">--</span>
-        </div>
-        <div class="progress-bar"><div class="progress-fill green" id="diskBar" style="width:0%"></div></div>
-      </div>
+            <div class="stat-row" style="margin-top:10px">
+              <span class="stat-label">RAM Allocated</span>
+              <span class="stat-value" id="ramVal">--</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill green" id="ramBar" style="width:0%"></div></div>
 
-      <!-- AI Stats -->
-      <div class="sidebar-section">
-        <h3>AI Engine</h3>
-        <div class="stat-row">
-          <span class="stat-label">Provider</span>
-          <span class="stat-value blue" id="providerVal">--</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Tools</span>
-          <span class="stat-value" id="toolsVal">--</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">API Calls</span>
-          <span class="stat-value" id="callsVal">--</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Errors</span>
-          <span class="stat-value" id="errorsVal">--</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">AI Time</span>
-          <span class="stat-value" id="aiTimeVal">--</span>
-        </div>
-      </div>
+            <div class="stat-row" style="margin-top:10px">
+              <span class="stat-label">Storage Array</span>
+              <span class="stat-value" id="diskVal">--</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill green" id="diskBar" style="width:0%"></div></div>
+          </div>
 
-      <!-- Session -->
-      <div class="sidebar-section">
-        <h3>Session</h3>
-        <div class="stat-row">
-          <span class="stat-label">Uptime</span>
-          <span class="stat-value" id="uptimeVal">--</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Commands</span>
-          <span class="stat-value" id="commandsVal">--</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Version</span>
-          <span class="stat-value" id="versionVal">--</span>
-        </div>
-      </div>
+          <!-- Spatial & Core Metrics -->
+          <div class="hud-card">
+            <div class="card-title">QUANTUM ENGINE</div>
+            <div class="stat-row">
+              <span class="stat-label">Provider</span>
+              <span class="stat-value blue" id="providerVal">Google Gemini</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Arc Core Flux</span>
+              <span class="stat-value yellow" id="fluxVal">4.82 GW</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Neural Calls</span>
+              <span class="stat-value" id="callsVal">--</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Errors</span>
+              <span class="stat-value" id="errorsVal">0</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Subsystems</span>
+              <span class="stat-value" id="toolsVal">18 Modules</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Active Uptime</span>
+              <span class="stat-value" id="uptimeVal">--</span>
+            </div>
+          </div>
 
-      <!-- Toggles -->
-      <div class="sidebar-section">
-        <h3>Modes</h3>
-        <div class="stat-row">
-          <span class="stat-label">Stark Mode</span>
-          <span class="stat-value" id="starkVal">--</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Safe Mode</span>
-          <span class="stat-value" id="safeVal">--</span>
-        </div>
-      </div>
+          <!-- Operational Mode Toggles -->
+          <div class="hud-card">
+            <div class="card-title">OPERATIONAL MODES</div>
+            <div class="stat-row">
+              <span class="stat-label">Stark Protocol</span>
+              <span class="stat-value yellow clickable" id="starkVal" title="Click to toggle Stark Mode">ENGAGED</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Safe Confinement</span>
+              <span class="stat-value green clickable" id="safeVal" title="Click to toggle Safe Mode">ON</span>
+            </div>
+          </div>
 
-      <!-- Model Switcher -->
-      <div class="sidebar-section">
-        <h3>Model</h3>
-        <div class="toggle-group" id="modelSwitcher">
-          <button class="toggle-btn" data-model="fast">Fast</button>
-          <button class="toggle-btn active" data-model="smart">Smart</button>
-          <button class="toggle-btn" data-model="deep">Deep</button>
-        </div>
-      </div>
+          <!-- AI Model Switcher -->
+          <div class="hud-card">
+            <div class="card-title">NEURAL MODEL</div>
+            <div class="toggle-group" id="modelSwitcher">
+              <button class="toggle-btn active" data-model="gemini-3.1-flash-lite">Flash Lite</button>
+              <button class="toggle-btn" data-model="gemini-3.8-flash">Flash 3.8</button>
+              <button class="toggle-btn" data-model="fast">Fast</button>
+              <button class="toggle-btn" data-model="smart">Smart</button>
+            </div>
+          </div>
 
-      <!-- Quick Actions -->
-      <div class="sidebar-section">
-        <h3>Quick Actions</h3>
-        <div class="tool-button-group">
-          <button class="tool-btn osint-btn" data-prompt="deep search the entire internet for">OSINT Deep Search</button>
-          <button class="tool-btn chart-btn" data-prompt="Create a bar chart of sales: 10, 20, 30 with labels A, B, C">Bar Chart</button>
-          <button class="tool-btn chart-btn" data-prompt="Create a pie chart of market share: 40, 30, 20, 10">Pie Chart</button>
-          <button class="tool-btn diagram-btn" data-prompt="Draw a tree diagram of my company structure">Tree Diagram</button>
-          <button class="tool-btn ram-btn" data-text="reduce ram usage">Free RAM</button>
+          <!-- Quick Action Commands -->
+          <div class="hud-card">
+            <div class="card-title">TACTICAL COMMANDS</div>
+            <div class="tool-button-group">
+              <button class="tool-btn osint-btn" data-prompt="deep search the entire internet for">OSINT Deep Search</button>
+              <button class="tool-btn chart-btn" data-prompt="Create a bar chart of sales: 10, 20, 30 with labels A, B, C">3D Bar Chart</button>
+              <button class="tool-btn chart-btn" data-prompt="Create a pie chart of market share: 40, 30, 20, 10">Pie Breakdown</button>
+              <button class="tool-btn diagram-btn" data-prompt="Draw a tree diagram of my company structure">Architecture Tree</button>
+              <button class="tool-btn ram-btn" data-text="reduce ram usage">Purge Cache & RAM</button>
+            </div>
+          </div>
         </div>
-      </div>
+      </aside>
 
-      <!-- Voice / TTS -->
-      <div class="sidebar-section" id="voiceSection">
-        <h3>Voice Output</h3>
-        <div class="voice-controls">
-          <button class="voice-btn active" id="voiceToggle" title="Toggle voice output">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-            <span>Speak</span>
-          </button>
-          <button class="voice-btn" id="voiceStopBtn" title="Stop speaking">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-            <span>Stop</span>
-          </button>
+      <!-- Center Spatial Viewport Hint Overlay -->
+      <div class="spatial-viewport-controls">
+        <div class="spatial-hint">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3"/></svg>
+          <span>Drag to orbit 360° · Scroll to zoom · Click hotspots to inspect</span>
         </div>
-        <div class="voice-setting">
-          <label>Voice</label>
-          <select id="voiceSelect" class="voice-select"><option>Loading voices…</option></select>
-        </div>
-        <div class="voice-setting">
-          <label>Speed <span id="voiceSpeedVal" class="speed-val">1.0x</span></label>
-          <input type="range" id="voiceSpeed" min="0.5" max="2.0" step="0.1" value="1.0" class="voice-slider">
-        </div>
-      </div>
-    </aside>
 
-    <!-- Chat Area -->
-    <main class="chat-area">
-      <div class="messages" id="messages">
-        <div class="welcome" id="welcome">
-          <div class="big-reactor"></div>
-          <h2>FRIDAY</h2>
-          <p>Female Replacement Intelligent Digital Assistant Youth. Ask me anything — I can search the web, run code, manage files, and much more.</p>
+        <!-- Explode Slider for Mark L Armor -->
+        <div class="explode-slider-container" id="explodeSliderContainer" style="display:none">
+          <label for="explodeSlider">ARMOR EXPLODE MATRIX</label>
+          <input type="range" id="explodeSlider" min="0" max="1" step="0.01" value="0">
+          <span id="explodeVal">0%</span>
         </div>
       </div>
 
-      <div class="input-bar">
-        <div class="input-wrapper">
-          <textarea id="userInput" placeholder="Message FRIDAY..." rows="1"></textarea>
-          <button class="send-btn" id="sendBtn" title="Send">&#9654;</button>
+      <!-- Right HUD: Neural AI Chat & Voice Assistant -->
+      <main class="hud-panel hud-right" id="rightHud">
+        <div class="panel-header">
+          <h3><span>NEURAL</span> INTERFACE</h3>
+          <div class="header-tools">
+            <button class="hud-icon-btn" id="voiceToggle" title="Toggle Voice Output">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </button>
+            <button class="hud-icon-btn" id="voiceStopBtn" title="Silence Voice">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+            <button class="panel-collapse-btn" id="toggleRightHud" title="Toggle Panel">▶</button>
+          </div>
         </div>
-      </div>
-    </main>
+
+        <!-- Voice Settings Drawer -->
+        <div class="voice-drawer" id="voiceDrawer">
+          <div class="drawer-row">
+            <label>Voice Persona</label>
+            <select id="voiceSelect" class="hud-select"><option>Default Synthetic Voice</option></select>
+          </div>
+          <div class="drawer-row">
+            <label>Playback Rate (<span id="voiceSpeedVal">1.0x</span>)</label>
+            <input type="range" id="voiceSpeed" min="0.6" max="1.8" step="0.1" value="1.0" class="hud-slider">
+          </div>
+        </div>
+
+        <!-- Chat Stream -->
+        <div class="messages" id="messages">
+          <div class="welcome" id="welcome">
+            <div class="big-reactor"></div>
+            <h2>F.R.I.D.A.Y.</h2>
+            <p>Female Replacement Intelligent Digital Assistant Youth. 3D Spatial Hologram online. How may I assist your engineering, research, or diagnostic workflow?</p>
+          </div>
+        </div>
+
+        <!-- Input Bar -->
+        <div class="input-bar">
+          <div class="input-wrapper">
+            <textarea id="userInput" placeholder="Ask FRIDAY or type tactical command..." rows="1"></textarea>
+            <button class="send-btn" id="sendBtn" title="Transmit Query">&#9654;</button>
+          </div>
+        </div>
+      </main>
+    </div>
   </div>
 
+  <script src="/static/threejs-scene.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
