@@ -608,6 +608,251 @@ html, body {
   transform: translateY(-1px);
 }
 
+/* Prominent Cyber Web Launch Box */
+.launch-action-box {
+  margin: 10px 0 6px 0;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(6, 18, 36, 0.95));
+  border: 1px solid var(--accent-cyan);
+  border-radius: 8px;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.launch-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.launch-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 2px 6px;
+  background: rgba(0, 240, 255, 0.2);
+  color: var(--accent-cyan);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 240, 255, 0.4);
+}
+
+.launch-url {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #ffffff;
+  word-break: break-all;
+}
+
+.launch-buttons-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.launch-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--accent-cyan);
+  color: #040914 !important;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 0 12px var(--accent-glow);
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.launch-action-btn:hover {
+  background: #ffffff;
+  box-shadow: 0 0 20px #ffffff;
+  transform: translateY(-1px);
+}
+
+.launch-action-btn.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--accent-cyan) !important;
+  border: 1px solid var(--accent-cyan);
+  box-shadow: none;
+}
+
+.launch-action-btn.secondary:hover {
+  background: rgba(0, 240, 255, 0.2);
+  color: #ffffff !important;
+}
+
+/* ── In-App Holographic HUD Browser Window ──────────────────────────────── */
+.hud-browser-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.hud-browser-window {
+  width: 90vw;
+  max-width: 1050px;
+  height: 82vh;
+  background: #090e1a;
+  border: 1px solid var(--accent-cyan);
+  border-radius: 10px;
+  box-shadow: 0 0 40px rgba(0, 240, 255, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hud-browser-header {
+  height: 42px;
+  background: #0d1527;
+  border-bottom: 1px solid var(--border-accent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  gap: 12px;
+}
+
+.hud-browser-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.hud-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.hud-dot.red { background: #ef4444; }
+.hud-dot.yellow { background: #eab308; }
+.hud-dot.green { background: #22c55e; }
+
+.hud-browser-url-bar {
+  flex: 1;
+  max-width: 600px;
+  height: 26px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.hud-url-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-browser-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(0, 240, 255, 0.15);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 6px;
+  color: var(--accent-cyan);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hud-action-btn:hover {
+  background: var(--accent-cyan);
+  color: #020617;
+}
+
+.hud-action-btn.close {
+  padding: 4px 8px;
+  color: var(--text-muted);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.hud-action-btn.close:hover {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+
+.hud-browser-body {
+  flex: 1;
+  position: relative;
+  background: #ffffff;
+}
+
+.hud-browser-body iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #ffffff;
+}
+
+.hud-fallback-overlay {
+  position: absolute;
+  inset: 0;
+  background: #090e1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  text-align: center;
+}
+
+.hud-fallback-content {
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.hud-fallback-icon {
+  font-size: 40px;
+}
+
+.hud-fallback-content h3 {
+  font-size: 18px;
+  color: var(--accent-cyan);
+  font-family: var(--font-sans);
+}
+
+.hud-fallback-content p {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* ── Bottom Input Bar ───────────────────────────────────────────────────── */
 .bottom-input-bar {
   padding: 12px 20px;

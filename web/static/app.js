@@ -2,7 +2,7 @@
  * I.R.O.N. M.A.N. Dashboard Controller
  * Real-time Hardware Telemetry (Device & Host)
  * AI Voice Mute & Clean Interactive 3D Image Drag-Rotation
- * Direct Web Launch in Chrome
+ * Reliable Chrome Web Launch & In-App Holographic HUD Browser
  */
 
 (function () {
@@ -24,9 +24,18 @@
   const voiceIconOff = $('#voiceIconOff');
   const voiceLabel = $('#voiceLabel');
 
-  // Rotation Elements (Clean Drag Rotation)
+  // Rotation Elements
   const ironmanWrapper = $('#ironmanWrapper');
   const ironmanImg = $('#ironmanImg');
+
+  // HUD Browser Elements
+  const hudBrowserModal = $('#hudBrowserModal');
+  const hudCloseBtn = $('#hudCloseBtn');
+  const hudCloseBtn2 = $('#hudCloseBtn2');
+  const hudUrlText = $('#hudUrlText');
+  const hudPopoutLink = $('#hudPopoutLink');
+  const hudFallbackLink = $('#hudFallbackLink');
+  const hudIframe = $('#hudIframe');
 
   const els = {
     cpuVal: $('#cpuVal'),
@@ -55,6 +64,30 @@
   let voiceMuted = localStorage.getItem('ironman_voice_muted') === 'true';
   let telemetrySource = 'device'; // 'device' | 'host'
   const synth = window.speechSynthesis;
+
+  // ── In-App Holographic HUD Browser Window ────────────────────────────────
+  function openInHudBrowser(url) {
+    if (!hudBrowserModal) return;
+    if (hudUrlText) hudUrlText.textContent = url;
+    if (hudPopoutLink) hudPopoutLink.href = url;
+    if (hudFallbackLink) hudFallbackLink.href = url;
+    if (hudIframe) hudIframe.src = url;
+    hudBrowserModal.style.display = 'flex';
+  }
+
+  function closeHudBrowser() {
+    if (!hudBrowserModal) return;
+    hudBrowserModal.style.display = 'none';
+    if (hudIframe) hudIframe.src = 'about:blank';
+  }
+
+  if (hudCloseBtn) hudCloseBtn.addEventListener('click', closeHudBrowser);
+  if (hudCloseBtn2) hudCloseBtn2.addEventListener('click', closeHudBrowser);
+  if (hudBrowserModal) {
+    hudBrowserModal.addEventListener('click', (e) => {
+      if (e.target === hudBrowserModal) closeHudBrowser();
+    });
+  }
 
   // ── AI Voice Mute System ────────────────────────────────────────────────
   function updateVoiceUI() {
@@ -100,7 +133,6 @@
   }
 
   if (ironmanWrapper) {
-    // Mouse Drag
     ironmanWrapper.addEventListener('mousedown', (e) => {
       isDragging = true;
       dragStartX = e.clientX;
@@ -135,7 +167,7 @@
       }
     });
 
-    // Touch Drag (Mobile)
+    // Touch Support
     ironmanWrapper.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
         isDragging = true;
@@ -157,8 +189,10 @@
     }, { passive: true });
   }
 
-  // ── URL & Website Detection (Opens Directly in Chrome) ───────────────────
+  // ── URL & Website Detection & Launch Engine ──────────────────────────────
   function extractOpenUrl(text) {
+    if (!text) return null;
+
     const shortcuts = {
       youtube: 'https://youtube.com',
       google: 'https://google.com',
@@ -175,37 +209,47 @@
       amazon: 'https://amazon.com',
     };
 
-    // Explicit open patterns
-    const matchExplicit = text.match(/(?:open|launch|browse to|navigate to|go to)\s+(?:website\s+|site\s+)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/i);
-    if (matchExplicit && matchExplicit[1]) {
-      const u = matchExplicit[1];
-      return u.startsWith('http') ? u : `https://${u}`;
+    // Full URL
+    const matchHttp = text.match(/https?:\/\/[^\s)]+/i);
+    if (matchHttp) return matchHttp[0];
+
+    // Domain name patterns (e.g., google.com, youtube.com, www.bing.com)
+    const matchDomain = text.match(/\b([a-zA-Z0-9-]+\.(?:com|org|net|io|dev|edu|gov|co|app|ai|me|tv|info|xyz|in|uk)(?:\/[^\s)]*)?)\b/i);
+    if (matchDomain && matchDomain[1]) {
+      return `https://${matchDomain[1]}`;
     }
 
-    const matchNamed = text.match(/(?:open|launch|browse to|go to)\s+(youtube|google|github|reddit|twitter|x|facebook|instagram|chatgpt|netflix|wikipedia|linkedin|amazon)/i);
+    // Named shortcuts (e.g., "open youtube", "launch google in chrome")
+    const matchNamed = text.match(/\b(youtube|google|github|reddit|twitter|x|facebook|instagram|chatgpt|netflix|wikipedia|linkedin|amazon)\b/i);
     if (matchNamed && matchNamed[1]) {
       const name = matchNamed[1].toLowerCase();
       if (shortcuts[name]) return shortcuts[name];
     }
 
-    // Direct URLs in message
-    const matchHttp = text.match(/https?:\/\/[^\s]+/i);
-    if (matchHttp) return matchHttp[0];
-
     return null;
   }
 
   function launchUrlInChrome(url) {
+    if (!url) return false;
+
+    // Method 1: Synthetic link click (Works across browser security contexts)
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 100);
+    } catch {}
+
+    // Method 2: Direct window.open fallback
     try {
       const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (win) {
-        win.focus();
-        return true;
-      }
-    } catch (e) {
-      console.warn('Window open caught:', e);
-    }
-    return false;
+      if (win) win.focus();
+    } catch {}
+
+    return true;
   }
 
   // ── Markdown Parser with Cyber Launch Cards ─────────────────────────────
@@ -223,7 +267,7 @@
     out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
-    // Convert markdown links [title](url) to styled glowing button links
+    // Convert markdown links [title](url) to styled buttons
     out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, title, url) => {
       return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="web-launch-card">🌐 <strong>${title}</strong> <span style="font-size:10px;opacity:0.8;margin-left:4px;">↗</span></a>`;
     });
@@ -246,8 +290,39 @@
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.innerHTML = renderMarkdown(text);
-    msg.appendChild(bubble);
 
+    // If an action URL is detected in this conversation turn, attach a prominent launch box
+    const detectedUrl = extractOpenUrl(text);
+    if (detectedUrl) {
+      const launchBox = document.createElement('div');
+      launchBox.className = 'launch-action-box';
+      launchBox.innerHTML = `
+        <div class="launch-info">
+          <span class="launch-badge">CHROME WEB PORTAL</span>
+          <span class="launch-url">${detectedUrl}</span>
+        </div>
+        <div class="launch-buttons-row">
+          <a href="${detectedUrl}" target="_blank" rel="noopener noreferrer" class="launch-action-btn" title="Open directly in new Chrome Tab">
+            <span>OPEN IN CHROME TAB ↗</span>
+          </a>
+          <button type="button" class="launch-action-btn secondary hud-trigger-btn">
+            <span>HUD VIEWER 🖥️</span>
+          </button>
+        </div>
+      `;
+
+      // Attach HUD Viewer click listener
+      const hudBtn = launchBox.querySelector('.hud-trigger-btn');
+      if (hudBtn) {
+        hudBtn.addEventListener('click', () => {
+          openInHudBrowser(detectedUrl);
+        });
+      }
+
+      bubble.appendChild(launchBox);
+    }
+
+    msg.appendChild(bubble);
     messagesEl.appendChild(msg);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return bubble;
@@ -628,6 +703,7 @@
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (synth) synth.cancel();
+      closeHudBrowser();
     }
   });
 

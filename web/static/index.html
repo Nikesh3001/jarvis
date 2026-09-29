@@ -181,6 +181,42 @@
       </aside>
     </div>
 
+    <!-- In-App Holographic HUD Browser Window -->
+    <div class="hud-browser-modal" id="hudBrowserModal" style="display:none;">
+      <div class="hud-browser-window">
+        <div class="hud-browser-header">
+          <div class="hud-browser-dots">
+            <span class="hud-dot red" id="hudCloseBtn" title="Close Window"></span>
+            <span class="hud-dot yellow" id="hudMinBtn" title="Minimize"></span>
+            <span class="hud-dot green" id="hudMaxBtn" title="Maximize"></span>
+          </div>
+          <div class="hud-browser-url-bar">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span class="hud-url-text" id="hudUrlText">https://...</span>
+          </div>
+          <div class="hud-browser-actions">
+            <a href="#" id="hudPopoutLink" target="_blank" rel="noopener noreferrer" class="hud-action-btn" title="Open in new Chrome Tab">
+              <span>Open in Chrome Tab ↗</span>
+            </a>
+            <button class="hud-action-btn close" id="hudCloseBtn2">✕</button>
+          </div>
+        </div>
+        <div class="hud-browser-body">
+          <iframe id="hudIframe" src="about:blank" frameborder="0"></iframe>
+          <div class="hud-fallback-overlay" id="hudFallbackOverlay" style="display:none;">
+            <div class="hud-fallback-content">
+              <div class="hud-fallback-icon">🌐</div>
+              <h3>Web Target Loaded</h3>
+              <p>To view this site outside the AI Studio frame, click below to open directly in Chrome:</p>
+              <a href="#" id="hudFallbackLink" target="_blank" rel="noopener noreferrer" class="launch-action-btn">
+                <span>LAUNCH IN CHROME TAB ↗</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Bottom Input Bar: Message IRON MAN... -->
     <footer class="bottom-input-bar">
       <div class="input-container">
