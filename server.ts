@@ -296,7 +296,7 @@ app.post('/api/command', (req: Request, res: Response) => {
 });
 
 // Helper to generate FRIDAY local response if Gemini is not configured or as fallback
-function generateFridayLocalResponse(message: string): string {
+function generateFridayLocalResponse(message: string): string | null {
   const lower = message.toLowerCase().trim();
 
   // Quick action: Reduce RAM / Free memory
@@ -400,8 +400,119 @@ function generateFridayLocalResponse(message: string): string {
     return `Here is an optimized, production-grade implementation:\n\n\`\`\`typescript\n/**\n * High-performance asynchronous processing pipeline\n */\nexport async function executePipeline<T, R>(\n  items: readonly T[],\n  processor: (item: T) => Promise<R>,\n  concurrency = 4\n): Promise<R[]> {\n  const results: R[] = [];\n  const executing: Promise<void>[] = [];\n\n  for (const item of items) {\n    const p = processor(item).then((res) => {\n      results.push(res);\n    });\n    executing.push(p);\n\n    if (executing.length >= concurrency) {\n      await Promise.race(executing);\n    }\n  }\n\n  await Promise.all(executing);\n  return results;\n}\n\`\`\`\n\n- **Time Complexity**: O(n / c) where *c* is concurrency level\n- **Space Complexity**: O(n) bounded results store`;
   }
 
-  // General questions
-  return `Understood. Analyzing query: **${message}**.\n\nI have processed your request with the **${currentModel}** engine. All subsystems are operating at optimal parameters. If you need code generation, OSINT telemetry, data visualization, or system management, let me know!`;
+  // Return null so the autonomous online search engine searches the live web for the topic!
+  return null;
+}
+
+// ── Autonomous Online Search & Analysis Engine ──────────────────────────────
+async function searchOnlineIntelligence(query: string): Promise<string> {
+  const clean = query
+    .replace(/^(who is|what is|tell me about|search for|search|info on|find|lookup|who was|explain)\s+/i, '')
+    .replace(/[?.!]+$/, '')
+    .trim();
+
+  // 1. Wikipedia Knowledge Graph API
+  let wikiData: {
+    title: string;
+    description: string;
+    extract: string;
+    thumbnail: string | null;
+    url: string;
+    related: Array<{ title: string; snippet: string }>;
+  } | null = null;
+
+  try {
+    const sUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(clean)}&utf8=&format=json&origin=*`;
+    const sRes = await fetch(sUrl, {
+      headers: { 'User-Agent': 'JarvisOnlineAgent/5.0' },
+      signal: AbortSignal.timeout(3000),
+    });
+    const sJson = (await sRes.json()) as any;
+    const hits = sJson.query?.search || [];
+    if (hits.length > 0) {
+      const topTitle = hits[0].title;
+      const sumUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topTitle)}`;
+      const sumRes = await fetch(sumUrl, {
+        headers: { 'User-Agent': 'JarvisOnlineAgent/5.0' },
+        signal: AbortSignal.timeout(3000),
+      });
+      const sumJson = (await sumRes.json()) as any;
+      if (sumJson.extract) {
+        wikiData = {
+          title: sumJson.title,
+          description: sumJson.description || '',
+          extract: sumJson.extract,
+          thumbnail: sumJson.thumbnail?.source || null,
+          url: sumJson.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(topTitle)}`,
+          related: hits.slice(1, 4).map((h: any) => ({
+            title: h.title,
+            snippet: (h.snippet || '').replace(/<[^>]+>/g, '').trim(),
+          })),
+        };
+      }
+    }
+  } catch (e: any) {
+    console.error('Wiki search error:', e?.message);
+  }
+
+  // 2. DuckDuckGo Live Web Search Index
+  const webSnippets: string[] = [];
+  try {
+    const ddgRes = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(clean)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      signal: AbortSignal.timeout(3000),
+    });
+    const html = await ddgRes.text();
+    const re = /<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) && webSnippets.length < 3) {
+      const s = m[1].replace(/<[^>]+>/g, '').trim();
+      if (s && !webSnippets.includes(s)) webSnippets.push(s);
+    }
+  } catch (e: any) {
+    console.error('DuckDuckGo search error:', e?.message);
+  }
+
+  if (wikiData) {
+    let out = `### Intelligence Dossier: ${wikiData.title}\n`;
+    if (wikiData.description) {
+      out += `*${wikiData.description}*\n\n`;
+    }
+    out += `${wikiData.extract}\n\n`;
+
+    if (webSnippets.length > 0) {
+      out += `#### Real-Time Intelligence & News\n`;
+      webSnippets.forEach((snip) => {
+        out += `- ${snip}\n`;
+      });
+      out += `\n`;
+    }
+
+    if (wikiData.related && wikiData.related.length > 0) {
+      out += `#### Related Intelligence Nodes\n`;
+      wikiData.related.forEach((r) => {
+        out += `- **${r.title}**: ${r.snippet}\n`;
+      });
+      out += `\n`;
+    }
+
+    out += `🌐 **Verified Source**: [${wikiData.title} Reference](${wikiData.url})`;
+    return out;
+  }
+
+  if (webSnippets.length > 0) {
+    let out = `### Online Web Search Results: ${clean}\n\n`;
+    out += `I scanned online live sources for **${clean}** and analyzed the findings:\n\n`;
+    webSnippets.forEach((s, idx) => {
+      out += `${idx + 1}. ${s}\n\n`;
+    });
+    out += `🌐 **Verified Source**: Live Global Web Index`;
+    return out;
+  }
+
+  return `Understood. I searched online sources for **${query}** but found no verified records. Please specify your query with additional context or keywords.`;
 }
 
 // Map user model selection to supported Gemini models
@@ -422,7 +533,8 @@ function resolveModelName(model: string): string {
 
 async function handleChatStream(
   message: string,
-  onToken: (token: string) => void
+  onToken: (token: string) => void,
+  streamDelay = 0
 ): Promise<string> {
   totalCalls++;
   const callStart = Date.now();
@@ -453,6 +565,7 @@ Be direct, razor-sharp, and concise. Use clean markdown. Avoid fluff and unneces
           config: {
             systemInstruction,
             temperature: 0.7,
+            tools: [{ googleSearch: {} }],
           },
         });
 
@@ -483,18 +596,26 @@ Be direct, razor-sharp, and concise. Use clean markdown. Avoid fluff and unneces
     }
   }
 
-  // Fallback to local FRIDAY engine with smooth simulated streaming
-  const localReply = generateFridayLocalResponse(message);
-  const words = localReply.split(/(\s+)/);
+  // Fallback to local command handler or Autonomous Live Online Search
+  let replyText = generateFridayLocalResponse(message);
+
+  if (!replyText) {
+    onToken(`*Scanning live online intelligence sources for "${message}"...*\n\n`);
+    replyText = await searchOnlineIntelligence(message);
+  }
+
+  const words = replyText.split(/(\s+)/);
   for (const part of words) {
     onToken(part);
-    await new Promise((r) => setTimeout(r, 15));
+    if (streamDelay > 0) {
+      await new Promise((r) => setTimeout(r, streamDelay));
+    }
   }
 
   totalTimeSeconds += (Date.now() - callStart) / 1000;
   conversationHistory.push({ role: 'user', content: message });
-  conversationHistory.push({ role: 'assistant', content: localReply });
-  return localReply;
+  conversationHistory.push({ role: 'assistant', content: replyText });
+  return replyText;
 }
 
 // REST Chat route
@@ -508,9 +629,13 @@ app.post('/api/chat', async (req: Request, res: Response) => {
 
   try {
     let responseText = '';
-    await handleChatStream(message, (token) => {
-      responseText += token;
-    });
+    await handleChatStream(
+      message,
+      (token) => {
+        responseText += token;
+      },
+      0
+    );
     res.json({ ok: true, response: responseText });
   } catch (err: any) {
     totalErrors++;
@@ -544,12 +669,16 @@ wss.on('connection', (ws: WebSocket) => {
       }
 
       let fullResponse = '';
-      await handleChatStream(message, (token) => {
-        fullResponse += token;
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'token', content: token }));
-        }
-      });
+      await handleChatStream(
+        message,
+        (token) => {
+          fullResponse += token;
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'token', content: token }));
+          }
+        },
+        8
+      );
 
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'done', content: fullResponse }));
