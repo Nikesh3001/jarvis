@@ -1,7 +1,7 @@
 /**
- * FRIDAY 3D Holographic Spatial Engine
+ * FRIDAY / I.R.O.N. M.A.N. 3D Spatial Holographic Engine
+ * Full-Body Iron Man Mark III Interactive 3D Model
  * Powered by Three.js
- * Featuring Iron Man Mark 85 Interactive 3D Hologram
  */
 
 (function () {
@@ -17,7 +17,7 @@
   let canvasContainer, canvas;
   let currentMode = 'ironman'; // 'ironman' | 'reactor' | 'globe'
   let isStarkMode = true;
-  let autoRotate = false; // By default let user inspect Iron Man or look at him
+  let autoRotate = false;
   let rotateSpeed = 0.005;
   let explodeAmount = 0.0;
   let isSpeaking = false;
@@ -30,6 +30,10 @@
   let headGroup = null;
   let faceplateGroup = null;
   let chestGroup = null;
+  let leftArmGroup = null;
+  let rightArmGroup = null;
+  let leftLegGroup = null;
+  let rightLegGroup = null;
   let reactorGroup = null;
   let globeGroup = null;
   let particleSystem = null;
@@ -37,45 +41,28 @@
   let hudReticle = null;
   let chestReactorCore = null;
   let eyeLights = [];
+  let repulsorLights = [];
 
   // Interactive Hotspots
   const hotspots = [];
   let hoveredHotspot = null;
 
-  // Camera targets for smooth lerp
-  const targetCamPos = new THREE.Vector3(0, 4, 60);
-  const targetLookAt = new THREE.Vector3(0, 6, 0);
-  const currentLookAt = new THREE.Vector3(0, 6, 0);
+  // Camera targets: positioned to frame the full standing Iron Man Mark III
+  const targetCamPos = new THREE.Vector3(0, 2, 54);
+  const targetLookAt = new THREE.Vector3(0, 1, 0);
+  const currentLookAt = new THREE.Vector3(0, 1, 0);
 
-  // Palette definitions
-  const PALETTES = {
-    stark: {
-      crimson: 0x9e0018,
-      crimsonDark: 0x6e0010,
-      gold: 0xf59e0b,
-      goldLight: 0xfde047,
-      titanium: 0x334155,
-      arcCyan: 0x00f0ff,
-      arcWhite: 0xffffff,
-      glow: 0x00f0ff,
-      ambient: 0x1e3a5f,
-    },
-    stealth: {
-      crimson: 0x1e293b,
-      crimsonDark: 0x0f172a,
-      gold: 0x64748b,
-      goldLight: 0x94a3b8,
-      titanium: 0x1e293b,
-      arcCyan: 0x38bdf8,
-      arcWhite: 0xffffff,
-      glow: 0x38bdf8,
-      ambient: 0x0f172a,
-    },
+  // Mark III Metallic Color Palette
+  const PALETTE = {
+    crimson: 0xaa0e22,       // Iconic hot rod red metallic
+    crimsonDark: 0x7a0816,   // Shadowed crimson
+    gold: 0xf59e0b,          // Titanium gold thigh and faceplate
+    goldLight: 0xfcd34d,     // Specular gold highlights
+    titanium: 0x334155,      // Mechanical joints and frame
+    silver: 0xe2e8f0,        // Chrome pistons & bolts
+    arcCyan: 0x00f0ff,       // RT Arc Core and eye glow
+    arcWhite: 0xffffff,
   };
-
-  function getPalette() {
-    return isStarkMode ? PALETTES.stark : PALETTES.stealth;
-  }
 
   // Initialize Scene
   function init() {
@@ -86,13 +73,13 @@
     const width = canvasContainer.clientWidth || window.innerWidth;
     const height = canvasContainer.clientHeight || window.innerHeight;
 
-    // Scene & Depth Fog
+    // Scene & Deep Atmospheric Fog
     scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x060b14, 0.0035);
+    scene.fog = new THREE.FogExp2(0x060b14, 0.0032);
 
     // Camera
-    camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 1000);
-    camera.position.set(0, 5, 60);
+    camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    camera.position.set(0, 2, 54);
     targetCamPos.copy(camera.position);
 
     // Renderer
@@ -105,9 +92,9 @@
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.35;
+    renderer.toneMappingExposure = 1.4;
 
-    // WebGL Context Lost handling
+    // WebGL Context Safety
     canvas.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       console.warn('WebGL context lost. Pausing 3D spatial loop.');
@@ -122,7 +109,7 @@
     raycaster = new THREE.Raycaster();
     mouse = new THREE.Vector2(0, 0);
 
-    // Lighting
+    // Studio Lighting setup
     setupLighting();
 
     // Main rotating group
@@ -132,11 +119,11 @@
     // Build modules
     buildBackgroundGrid();
     buildParticleField();
-    buildIronMan();
+    buildFullBodyIronMan();
     buildArcReactor();
     buildGlobalGlobe();
 
-    // Set initial mode to Iron Man!
+    // Set initial mode to full body Iron Man
     setMode('ironman');
 
     // Controls & Events
@@ -148,27 +135,27 @@
   }
 
   function setupLighting() {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.75);
     scene.add(ambient);
 
-    // Front Key Light (Warm metallic highlight)
-    const keyLight = new THREE.DirectionalLight(0xfffaed, 2.0);
-    keyLight.position.set(30, 45, 50);
+    // Key Light (Warm metallic highlight on gold and red)
+    const keyLight = new THREE.DirectionalLight(0xfff7ed, 2.2);
+    keyLight.position.set(25, 40, 45);
     scene.add(keyLight);
 
-    // Cool Rim Light (Sharp blue edge separation)
-    const rimLight = new THREE.DirectionalLight(0x00f0ff, 2.2);
-    rimLight.position.set(-40, 20, -35);
+    // Cool Rim Light (Sharp cyan edge contour)
+    const rimLight = new THREE.DirectionalLight(0x00f0ff, 2.0);
+    rimLight.position.set(-35, 20, -30);
     scene.add(rimLight);
 
-    // Bottom Up-light (Gives cinematic specular sheen on armor plates)
-    const bounceLight = new THREE.DirectionalLight(0xd97706, 0.8);
-    bounceLight.position.set(0, -30, 20);
-    scene.add(bounceLight);
+    // Backstage Fill Light
+    const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.9);
+    fillLight.position.set(0, -20, 30);
+    scene.add(fillLight);
 
-    // Chest RT Arc Glow Point Light
-    const arcLight = new THREE.PointLight(0x00f0ff, 4.5, 40);
-    arcLight.position.set(0, 3, 10);
+    // Chest RT Arc Core Point Light
+    const arcLight = new THREE.PointLight(0x00f0ff, 4.0, 35);
+    arcLight.position.set(0, 6, 8);
     arcLight.name = 'arcPointLight';
     scene.add(arcLight);
   }
@@ -178,26 +165,37 @@
   function buildBackgroundGrid() {
     const size = 180;
     const divisions = 24;
-    const grid = new THREE.GridHelper(size, divisions, 0x1e3a5f, 0x071524);
-    grid.position.y = -25;
+    const grid = new THREE.GridHelper(size, divisions, 0x1e3a5f, 0x081525);
+    grid.position.y = -21;
     scene.add(grid);
 
-    // Outer circular boundary ring
-    const ringGeo = new THREE.RingGeometry(65, 66, 64);
-    const ringMat = new THREE.MeshBasicMaterial({
+    // Ground Holo Landing Pedestal (Iron Man stands on this illuminated ring)
+    const pedestalGeo = new THREE.CylinderGeometry(14, 15, 1, 32);
+    const pedestalMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      metalness: 0.9,
+      roughness: 0.25,
+    });
+    const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
+    pedestal.position.y = -20.5;
+    scene.add(pedestal);
+
+    // Glowing Neon Rim around Pedestal
+    const rimGeo = new THREE.RingGeometry(13.8, 14.5, 48);
+    const rimMat = new THREE.MeshBasicMaterial({
       color: 0x00f0ff,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.2,
+      opacity: 0.7,
     });
-    const horizonRing = new THREE.Mesh(ringGeo, ringMat);
-    horizonRing.rotation.x = Math.PI / 2;
-    horizonRing.position.y = -24.8;
-    scene.add(horizonRing);
+    const rim = new THREE.Mesh(rimGeo, rimMat);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = -19.95;
+    scene.add(rim);
   }
 
   function buildParticleField() {
-    const pCount = 900;
+    const pCount = 800;
     particleGeo = new THREE.BufferGeometry();
     const positions = new Float32Array(pCount * 3);
 
@@ -217,7 +215,7 @@
       color: 0x00f0ff,
       size: 1.2,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.6,
       blending: THREE.AdditiveBlending,
     });
 
@@ -225,42 +223,40 @@
     scene.add(particleSystem);
   }
 
-  // ── Masterpiece: 3D Iron Man Mark 85 Armor & Helmet ─────────────────────
+  // ── Masterpiece: Full-Body 3D Iron Man Mark III ──────────────────────────
 
-  function buildIronMan() {
+  function buildFullBodyIronMan() {
     ironmanGroup = new THREE.Group();
     ironmanGroup.name = 'ironmanGroup';
-    ironmanGroup.position.set(0, -5, 0);
-
-    const p = getPalette();
+    ironmanGroup.position.set(0, 0, 0);
 
     // Metallic Materials
     const matCrimson = new THREE.MeshStandardMaterial({
-      color: p.crimson,
-      metalness: 0.88,
+      color: PALETTE.crimson,
+      metalness: 0.9,
       roughness: 0.22,
     });
 
     const matCrimsonDark = new THREE.MeshStandardMaterial({
-      color: p.crimsonDark,
+      color: PALETTE.crimsonDark,
       metalness: 0.85,
-      roughness: 0.3,
+      roughness: 0.28,
     });
 
     const matGold = new THREE.MeshStandardMaterial({
-      color: p.gold,
+      color: PALETTE.gold,
       metalness: 0.92,
-      roughness: 0.26,
+      roughness: 0.25,
     });
 
     const matTitanium = new THREE.MeshStandardMaterial({
-      color: p.titanium,
+      color: PALETTE.titanium,
       metalness: 0.95,
-      roughness: 0.18,
+      roughness: 0.2,
     });
 
     const matArcGlow = new THREE.MeshBasicMaterial({
-      color: p.arcCyan,
+      color: 0xffffff,
     });
 
     const matEyeGlow = new THREE.MeshBasicMaterial({
@@ -268,263 +264,189 @@
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 1. CHEST & TORSO ASSEMBLY
+    // 1. CHEST & TORSO (Pectorals, RT Arc Core, Abdomen)
     // ─────────────────────────────────────────────────────────────────────────
     chestGroup = new THREE.Group();
     chestGroup.name = 'ironmanChest';
 
-    // Main Torso Chassis (Inner Frame)
-    const torsoChassisGeo = new THREE.CylinderGeometry(8.5, 7.0, 16, 16);
-    const torsoChassis = new THREE.Mesh(torsoChassisGeo, matTitanium);
-    torsoChassis.position.y = 5;
+    // Main Torso Chassis (Crimson)
+    const torsoChassisGeo = new THREE.CylinderGeometry(6.2, 5.0, 11, 16);
+    const torsoChassis = new THREE.Mesh(torsoChassisGeo, matCrimson);
+    torsoChassis.position.y = 4.5;
     chestGroup.add(torsoChassis);
 
     // Left and Right Pectoral Armor Plates
-    const pecGeo = new THREE.BoxGeometry(6.5, 7.5, 2.8);
+    const pecGeo = new THREE.BoxGeometry(4.8, 5.2, 2.2);
 
     const leftPec = new THREE.Mesh(pecGeo, matCrimson.clone());
-    leftPec.position.set(-4.5, 8.5, 6.2);
-    leftPec.rotation.y = 0.18;
-    leftPec.rotation.z = -0.05;
+    leftPec.position.set(-3.2, 6.8, 4.4);
+    leftPec.rotation.y = 0.2;
     leftPec.userData = { normal: new THREE.Vector3(-0.9, 0.2, 1).normalize() };
     chestGroup.add(leftPec);
 
     const rightPec = new THREE.Mesh(pecGeo, matCrimson.clone());
-    rightPec.position.set(4.5, 8.5, 6.2);
-    rightPec.rotation.y = -0.18;
-    rightPec.rotation.z = 0.05;
+    rightPec.position.set(3.2, 6.8, 4.4);
+    rightPec.rotation.y = -0.2;
     rightPec.userData = { normal: new THREE.Vector3(0.9, 0.2, 1).normalize() };
     chestGroup.add(rightPec);
 
-    // Clavicle & Trapezius Gold Armor Bars
-    const clavicleGeo = new THREE.BoxGeometry(7, 2, 2.5);
-
+    // Clavicle & Collar Gold Ribs
+    const clavicleGeo = new THREE.BoxGeometry(5.0, 1.4, 1.8);
     const leftClavicle = new THREE.Mesh(clavicleGeo, matGold);
-    leftClavicle.position.set(-6, 13, 4.5);
+    leftClavicle.position.set(-4.2, 10.0, 3.2);
     leftClavicle.rotation.z = 0.15;
     chestGroup.add(leftClavicle);
 
     const rightClavicle = new THREE.Mesh(clavicleGeo, matGold);
-    rightClavicle.position.set(6, 13, 4.5);
+    rightClavicle.position.set(4.2, 10.0, 3.2);
     rightClavicle.rotation.z = -0.15;
     chestGroup.add(rightClavicle);
 
-    // Central Triangular RT Arc Reactor Core Housing
-    const arcHousingGeo = new THREE.CylinderGeometry(3.6, 3.6, 2.2, 6);
+    // Central Circular RT Arc Reactor Housing (Mark III Circular Arc)
+    const arcHousingGeo = new THREE.CylinderGeometry(2.4, 2.4, 1.6, 32);
     const arcHousing = new THREE.Mesh(arcHousingGeo, matTitanium);
     arcHousing.rotation.x = Math.PI / 2;
-    arcHousing.position.set(0, 8.5, 7.2);
+    arcHousing.position.set(0, 6.8, 5.0);
     chestGroup.add(arcHousing);
 
-    // Glowing Triangular Arc Lens
-    const arcLensGeo = new THREE.CircleGeometry(2.6, 3);
+    // Circular Glowing Arc Core Lens
+    const arcLensGeo = new THREE.CircleGeometry(1.9, 32);
     const arcLens = new THREE.Mesh(arcLensGeo, matArcGlow);
-    arcLens.rotation.z = Math.PI; // Inverted triangle shape (classic Mark 85)
-    arcLens.position.set(0, 8.5, 8.4);
+    arcLens.position.set(0, 6.8, 5.85);
     arcLens.name = 'arcLens';
     chestReactorCore = arcLens;
     chestGroup.add(arcLens);
 
-    // Arc Core Pulsing Outer Ring
-    const arcRingGeo = new THREE.RingGeometry(2.8, 3.3, 32);
+    // Outer Concentric Cyan Arc Ring
+    const arcRingGeo = new THREE.RingGeometry(1.9, 2.3, 32);
     const arcRingMat = new THREE.MeshBasicMaterial({
-      color: p.arcCyan,
+      color: 0x00f0ff,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.85,
     });
     const arcRing = new THREE.Mesh(arcRingGeo, arcRingMat);
-    arcRing.position.set(0, 8.5, 8.42);
-    arcRing.name = 'arcRing';
+    arcRing.position.set(0, 6.8, 5.86);
     chestGroup.add(arcRing);
 
     // Segmented Abdominal Armor Plates (Interlocking Crimson & Gold)
     for (let i = 0; i < 3; i++) {
-      const abGeo = new THREE.BoxGeometry(8 - i * 1.2, 2.2, 2.2);
+      const abGeo = new THREE.BoxGeometry(5.8 - i * 0.8, 1.6, 1.8);
       const abPlate = new THREE.Mesh(abGeo, i % 2 === 0 ? matCrimsonDark : matGold);
-      abPlate.position.set(0, 3.6 - i * 2.5, 5.8 - i * 0.4);
+      abPlate.position.set(0, 3.2 - i * 1.8, 4.2 - i * 0.3);
       abPlate.userData = { normal: new THREE.Vector3(0, -0.2, 1).normalize() };
       chestGroup.add(abPlate);
     }
 
-    // Aerodynamic Shoulder Pauldrons (Deltoids)
-    const pauldronGeo = new THREE.ConeGeometry(5.2, 6.5, 5);
-
-    const leftPauldron = new THREE.Mesh(pauldronGeo, matCrimson);
-    leftPauldron.position.set(-13.5, 12, 1.5);
-    leftPauldron.rotation.z = 0.55;
-    leftPauldron.rotation.y = 0.2;
-    chestGroup.add(leftPauldron);
-
-    const rightPauldron = new THREE.Mesh(pauldronGeo, matCrimson);
-    rightPauldron.position.set(13.5, 12, 1.5);
-    rightPauldron.rotation.z = -0.55;
-    rightPauldron.rotation.y = -0.2;
-    chestGroup.add(rightPauldron);
-
-    // Gold Shoulder Trim Inlays
-    const trimGeo = new THREE.BoxGeometry(4.5, 1.2, 4);
-    const leftTrim = new THREE.Mesh(trimGeo, matGold);
-    leftTrim.position.set(-13, 14.5, 1.5);
-    leftTrim.rotation.z = 0.35;
-    chestGroup.add(leftTrim);
-
-    const rightTrim = new THREE.Mesh(trimGeo, matGold);
-    rightTrim.position.set(13, 14.5, 1.5);
-    rightTrim.rotation.z = -0.35;
-    chestGroup.add(rightTrim);
-
     ironmanGroup.add(chestGroup);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 2. NECK & CERVICAL PISTONS
+    // 2. NECK & ARTICULATED CYLINDER
     // ─────────────────────────────────────────────────────────────────────────
-    const neckGroup = new THREE.Group();
-    neckGroup.position.set(0, 14, 1);
-
-    const neckPillar = new THREE.Mesh(
-      new THREE.CylinderGeometry(3.5, 4.2, 4.5, 16),
+    const neck = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.4, 3.0, 3.2, 16),
       matTitanium
     );
-    neckGroup.add(neckPillar);
-
-    // Hydraulic side pistons
-    const pistonGeo = new THREE.CylinderGeometry(0.5, 0.5, 4, 8);
-    const leftPiston = new THREE.Mesh(pistonGeo, matTitanium);
-    leftPiston.position.set(-3.2, 0, 0.8);
-    leftPiston.rotation.z = 0.15;
-    neckGroup.add(leftPiston);
-
-    const rightPiston = new THREE.Mesh(pistonGeo, matTitanium);
-    rightPiston.position.set(3.2, 0, 0.8);
-    rightPiston.rotation.z = -0.15;
-    neckGroup.add(rightPiston);
-
-    ironmanGroup.add(neckGroup);
+    neck.position.set(0, 10.8, 0.6);
+    ironmanGroup.add(neck);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 3. THE ICONIC IRON MAN HELMET & FACEPLATE
+    // 3. THE ICONIC MARK III HELMET & GOLD FACEPLATE
     // ─────────────────────────────────────────────────────────────────────────
     headGroup = new THREE.Group();
     headGroup.name = 'ironmanHead';
-    headGroup.position.set(0, 18, 1);
+    headGroup.position.set(0, 13.8, 0.8);
 
-    // Cranium Dome (Crimson metallic curved skull shell)
-    const craniumGeo = new THREE.SphereGeometry(6.4, 24, 24, 0, Math.PI * 2, 0, Math.PI * 0.7);
+    // Helmet Cranium Dome (Crimson Metallic)
+    const craniumGeo = new THREE.SphereGeometry(4.6, 24, 24, 0, Math.PI * 2, 0, Math.PI * 0.72);
     const cranium = new THREE.Mesh(craniumGeo, matCrimson);
-    cranium.position.set(0, 1.2, -0.6);
+    cranium.position.set(0, 0.8, -0.4);
     headGroup.add(cranium);
 
-    // Back of Helmet Neck Guard
-    const backGuardGeo = new THREE.CylinderGeometry(5.8, 5.2, 5, 16, 1, false, 0, Math.PI);
-    const backGuard = new THREE.Mesh(backGuardGeo, matCrimson);
-    backGuard.position.set(0, -1.8, -1.8);
-    backGuard.rotation.y = Math.PI;
-    headGroup.add(backGuard);
-
-    // Ear Circular Repulsor / Audio Transducers
-    const earGeo = new THREE.CylinderGeometry(2.0, 2.0, 0.8, 24);
+    // Circular Ear Audio Transducers / Repulsors (Gold)
+    const earGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.6, 24);
 
     const leftEar = new THREE.Mesh(earGeo, matGold);
     leftEar.rotation.z = Math.PI / 2;
-    leftEar.position.set(-6.2, 0.5, 0);
+    leftEar.position.set(-4.5, 0.2, 0);
     headGroup.add(leftEar);
 
     const rightEar = new THREE.Mesh(earGeo, matGold);
     rightEar.rotation.z = Math.PI / 2;
-    rightEar.position.set(6.2, 0.5, 0);
+    rightEar.position.set(4.5, 0.2, 0);
     headGroup.add(rightEar);
 
-    // ── The Sculpted Faceplate Group (Lifts up on Explode) ──
+    // ── Gold Faceplate Group (Lifts up on Explode) ──
     faceplateGroup = new THREE.Group();
     faceplateGroup.name = 'faceplateGroup';
 
-    // Faceplate Forehead Brow (Gold)
-    const browGeo = new THREE.BoxGeometry(6.6, 2.4, 3.2);
+    // Faceplate Brow / Forehead (Gold)
+    const browGeo = new THREE.BoxGeometry(4.8, 1.8, 2.4);
     const brow = new THREE.Mesh(browGeo, matGold);
-    brow.position.set(0, 2.6, 4.4);
+    brow.position.set(0, 1.8, 3.2);
     brow.rotation.x = -0.25;
     faceplateGroup.add(brow);
 
     // Cheekbone Left & Right Angular Bevels (Gold)
-    const cheekGeo = new THREE.BoxGeometry(2.5, 4.8, 3.0);
+    const cheekGeo = new THREE.BoxGeometry(1.8, 3.6, 2.2);
 
     const leftCheek = new THREE.Mesh(cheekGeo, matGold);
-    leftCheek.position.set(-3.2, -0.2, 4.2);
+    leftCheek.position.set(-2.4, -0.2, 3.1);
     leftCheek.rotation.y = -0.35;
-    leftCheek.rotation.z = 0.1;
     faceplateGroup.add(leftCheek);
 
     const rightCheek = new THREE.Mesh(cheekGeo, matGold);
-    rightCheek.position.set(3.2, -0.2, 4.2);
+    rightCheek.position.set(2.4, -0.2, 3.1);
     rightCheek.rotation.y = 0.35;
-    rightCheek.rotation.z = -0.1;
     faceplateGroup.add(rightCheek);
 
-    // Tapered Jaw / Mandible Chin Plate (Gold)
-    const jawGeo = new THREE.BoxGeometry(4.4, 2.6, 3.4);
+    // Mandible / Chin Plate (Gold)
+    const jawGeo = new THREE.BoxGeometry(3.2, 1.8, 2.4);
     const jaw = new THREE.Mesh(jawGeo, matGold);
-    jaw.position.set(0, -3.2, 3.8);
+    jaw.position.set(0, -2.4, 2.8);
     jaw.rotation.x = 0.25;
     faceplateGroup.add(jaw);
 
-    // Center Nose/Mouth Bridge
-    const bridgeGeo = new THREE.BoxGeometry(2.4, 2.8, 1.8);
-    const bridge = new THREE.Mesh(bridgeGeo, matGold);
-    bridge.position.set(0, -0.8, 5.2);
-    faceplateGroup.add(bridge);
-
-    // ── Glowing Eye Lenses (The Signature Iron Man Slits) ──
-    const eyeGeo = new THREE.BoxGeometry(2.1, 0.45, 0.8);
+    // Glowing Slit Eye Lenses (Iconic Angled White/Cyan Slits)
+    const eyeGeo = new THREE.BoxGeometry(1.6, 0.35, 0.6);
 
     const leftEye = new THREE.Mesh(eyeGeo, matEyeGlow);
-    leftEye.position.set(-2.0, 1.2, 5.6);
-    leftEye.rotation.z = -0.22; // Signature menacing eye tilt
+    leftEye.position.set(-1.5, 0.8, 4.1);
+    leftEye.rotation.z = -0.22;
     leftEye.name = 'leftEye';
     faceplateGroup.add(leftEye);
 
     const rightEye = new THREE.Mesh(eyeGeo, matEyeGlow);
-    rightEye.position.set(2.0, 1.2, 5.6);
+    rightEye.position.set(1.5, 0.8, 4.1);
     rightEye.rotation.z = 0.22;
     rightEye.name = 'rightEye';
     faceplateGroup.add(rightEye);
 
-    // Point lights for the glowing eyes
-    const leftEyeLight = new THREE.PointLight(0x00f0ff, 2.5, 12);
-    leftEyeLight.position.set(-2.0, 1.2, 7.0);
-    faceplateGroup.add(leftEyeLight);
-    eyeLights.push(leftEyeLight);
-
-    const rightEyeLight = new THREE.PointLight(0x00f0ff, 2.5, 12);
-    rightEyeLight.position.set(2.0, 1.2, 7.0);
-    faceplateGroup.add(rightEyeLight);
-    eyeLights.push(rightEyeLight);
+    // Dedicated Point Lights for Glowing Eyes
+    const eyeLight = new THREE.PointLight(0x00f0ff, 2.2, 10);
+    eyeLight.position.set(0, 0.8, 5.2);
+    faceplateGroup.add(eyeLight);
+    eyeLights.push(eyeLight);
 
     headGroup.add(faceplateGroup);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 4. FLOATING 3D HOLOGRAPHIC HUD TARGETING RETICLE (FRIDAY AR Overlay)
-    // ─────────────────────────────────────────────────────────────────────────
+    // Floating Holographic Targeting Reticle HUD (from the photo!)
     hudReticle = new THREE.Group();
     hudReticle.name = 'hudReticle';
-    hudReticle.position.set(0, 1.2, 12);
+    hudReticle.position.set(0, 0.8, 8.5);
 
-    // Outer Target Circle
-    const reticleGeo = new THREE.RingGeometry(5.5, 5.8, 36);
-    const reticleMat = new THREE.MeshBasicMaterial({
-      color: p.arcCyan,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.7,
-    });
-    const reticleRing = new THREE.Mesh(reticleGeo, reticleMat);
+    // Cyan Reticle Ring
+    const reticleRing = new THREE.Mesh(
+      new THREE.RingGeometry(3.8, 4.1, 32),
+      new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+    );
     hudReticle.add(reticleRing);
 
-    // Crosshair Corner Brackets
+    // 4 Corner Brackets: [  ]
     for (let c = 0; c < 4; c++) {
       const angle = (c * Math.PI) / 2 + Math.PI / 4;
-      const bracketGeo = new THREE.RingGeometry(4.2, 4.5, 8, 1, angle - 0.25, 0.5);
-      const bracket = new THREE.Mesh(bracketGeo, reticleMat);
+      const bracketGeo = new THREE.RingGeometry(4.8, 5.1, 8, 1, angle - 0.3, 0.6);
+      const bracket = new THREE.Mesh(bracketGeo, new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide }));
       hudReticle.add(bracket);
     }
 
@@ -532,12 +454,158 @@
     ironmanGroup.add(headGroup);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 5. INTERACTIVE 3D SENSOR HOTSPOTS
+    // 4. SHOULDERS & ARMS (Gold Biceps, Crimson Pauldrons & Gauntlets)
     // ─────────────────────────────────────────────────────────────────────────
-    createHotspot('Optical HUD & Target Matrix', '120 FPS Neural Target Lock · Threat Detection Active', 0, 19.5, 9, ironmanGroup);
-    createHotspot('RT Arc Reactor Core', 'Mark 85 Clean Energy · Output: 10.4 GW · Zero Degradation', 0, 4, 10, ironmanGroup);
-    createHotspot('Gold-Titanium Faceplate', 'Nanoparticle Matrix · Kinetic Deflection 99.8%', 4.5, 18, 6, ironmanGroup);
-    createHotspot('Vibro-Stabilized Pauldron', 'Kinetic Absorption Damper · Ballistic Class IV', -13.5, 8, 3, ironmanGroup);
+    function buildArm(isLeft) {
+      const arm = new THREE.Group();
+      const sign = isLeft ? -1 : 1;
+
+      // Shoulder Pauldron (Crimson with Gold Trim)
+      const pauldronGeo = new THREE.ConeGeometry(3.8, 5.0, 6);
+      const pauldron = new THREE.Mesh(pauldronGeo, matCrimson);
+      pauldron.position.set(sign * 9.2, 8.8, 0.8);
+      pauldron.rotation.z = sign * 0.55;
+      arm.add(pauldron);
+
+      // Bicep (Metallic Gold Armor - distinct Mark III feature)
+      const bicepGeo = new THREE.CylinderGeometry(1.8, 1.6, 5.5, 16);
+      const bicep = new THREE.Mesh(bicepGeo, matGold);
+      bicep.position.set(sign * 9.0, 4.5, 0.6);
+      bicep.rotation.z = sign * 0.1;
+      arm.add(bicep);
+
+      // Elbow Joint (Titanium)
+      const elbowGeo = new THREE.SphereGeometry(1.5, 12, 12);
+      const elbow = new THREE.Mesh(elbowGeo, matTitanium);
+      elbow.position.set(sign * 9.3, 1.2, 0.4);
+      arm.add(elbow);
+
+      // Forearm Gauntlet (Crimson with Gold inlays)
+      const forearmGeo = new THREE.CylinderGeometry(1.6, 1.3, 6.0, 16);
+      const forearm = new THREE.Mesh(forearmGeo, matCrimson);
+      forearm.position.set(sign * 9.5, -2.4, 0.8);
+      forearm.rotation.z = -sign * 0.08;
+      arm.add(forearm);
+
+      // Hand & Repulsor Node
+      const handGeo = new THREE.BoxGeometry(1.4, 1.8, 1.0);
+      const hand = new THREE.Mesh(handGeo, matCrimsonDark);
+      hand.position.set(sign * 9.6, -6.0, 1.0);
+      arm.add(hand);
+
+      // Glowing Palm Repulsor Disk
+      const repulsorGeo = new THREE.CircleGeometry(0.5, 16);
+      const repulsor = new THREE.Mesh(repulsorGeo, matArcGlow);
+      repulsor.position.set(sign * 9.6, -6.0, 1.55);
+      arm.add(repulsor);
+
+      const repulsorLight = new THREE.PointLight(0x00f0ff, 1.5, 6);
+      repulsorLight.position.set(sign * 9.6, -6.0, 2.0);
+      arm.add(repulsorLight);
+      repulsorLights.push(repulsorLight);
+
+      return arm;
+    }
+
+    leftArmGroup = buildArm(true);
+    rightArmGroup = buildArm(false);
+    ironmanGroup.add(leftArmGroup);
+    ironmanGroup.add(rightArmGroup);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 5. PELVIS & CODPIECE
+    // ─────────────────────────────────────────────────────────────────────────
+    const pelvisGroup = new THREE.Group();
+    pelvisGroup.position.set(0, -1.0, 0);
+
+    const codpieceGeo = new THREE.BoxGeometry(5.2, 3.2, 4.0);
+    const codpiece = new THREE.Mesh(codpieceGeo, matCrimson);
+    pelvisGroup.add(codpiece);
+
+    // Hip Golden Mechanical Connectors
+    const hipGeo = new THREE.CylinderGeometry(1.8, 1.8, 1.4, 16);
+    const leftHip = new THREE.Mesh(hipGeo, matGold);
+    leftHip.rotation.z = Math.PI / 2;
+    leftHip.position.set(-3.2, -0.6, 0);
+    pelvisGroup.add(leftHip);
+
+    const rightHip = new THREE.Mesh(hipGeo, matGold);
+    rightHip.rotation.z = Math.PI / 2;
+    rightHip.position.set(3.2, -0.6, 0);
+    pelvisGroup.add(rightHip);
+
+    ironmanGroup.add(pelvisGroup);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 6. LEGS & BOOTS (Gold Thighs, Crimson Shins, Flight Thrusters)
+    // ─────────────────────────────────────────────────────────────────────────
+    function buildLeg(isLeft) {
+      const leg = new THREE.Group();
+      const sign = isLeft ? -1 : 1;
+
+      // Upper Thigh Armor (Iconic Mark III Titanium Gold!)
+      const thighGeo = new THREE.CylinderGeometry(2.4, 2.0, 8.5, 16);
+      const thigh = new THREE.Mesh(thighGeo, matGold);
+      thigh.position.set(sign * 3.4, -6.0, 0.4);
+      thigh.rotation.z = sign * 0.04;
+      leg.add(thigh);
+
+      // Thigh Outer Crimson Accent Plate
+      const thighTrimGeo = new THREE.BoxGeometry(0.8, 6.5, 1.8);
+      const thighTrim = new THREE.Mesh(thighTrimGeo, matCrimson);
+      thighTrim.position.set(sign * 5.2, -6.0, 0.5);
+      leg.add(thighTrim);
+
+      // Knee Guard Cap (Crimson)
+      const kneeGeo = new THREE.BoxGeometry(2.4, 2.4, 2.0);
+      const knee = new THREE.Mesh(kneeGeo, matCrimson);
+      knee.position.set(sign * 3.4, -11.0, 1.2);
+      knee.rotation.x = -0.15;
+      leg.add(knee);
+
+      // Shin & Calf Armor (Crimson with Gold Exhaust Vents)
+      const shinGeo = new THREE.CylinderGeometry(2.0, 1.6, 8.0, 16);
+      const shin = new THREE.Mesh(shinGeo, matCrimson);
+      shin.position.set(sign * 3.4, -15.5, 0.6);
+      leg.add(shin);
+
+      // Armored Flight Boots
+      const bootGeo = new THREE.BoxGeometry(2.6, 2.2, 5.0);
+      const boot = new THREE.Mesh(bootGeo, matCrimson);
+      boot.position.set(sign * 3.4, -20.0, 1.4);
+      leg.add(boot);
+
+      // Boot Gold Toe Cap
+      const toeGeo = new THREE.BoxGeometry(2.4, 1.0, 1.8);
+      const toe = new THREE.Mesh(toeGeo, matGold);
+      toe.position.set(sign * 3.4, -20.4, 3.6);
+      leg.add(toe);
+
+      // Flight Thruster Sole Cyan Glowing Ring
+      const thrusterRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.6, 1.0, 16),
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide })
+      );
+      thrusterRing.rotation.x = Math.PI / 2;
+      thrusterRing.position.set(sign * 3.4, -21.1, 1.4);
+      leg.add(thrusterRing);
+
+      return leg;
+    }
+
+    leftLegGroup = buildLeg(true);
+    rightLegGroup = buildLeg(false);
+    ironmanGroup.add(leftLegGroup);
+    ironmanGroup.add(rightLegGroup);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 7. INTERACTIVE 3D SENSOR HOTSPOTS
+    // ─────────────────────────────────────────────────────────────────────────
+    createHotspot('Optical HUD & Target Matrix', 'Mark III Gold-Titanium Faceplate · 120 FPS Neural Track', 0, 15.2, 5.5, ironmanGroup);
+    createHotspot('Chest RT Arc Reactor', 'Clean Energy Core Generator · Output: 8.5 GW Output', 0, 6.8, 6.5, ironmanGroup);
+    createHotspot('Repulsor Flight Gauntlet', 'Variable Phase Palm Repulsor · Particle Beam Ready', -9.6, -6.0, 2.2, ironmanGroup);
+    createHotspot('Titanium Gold Thigh Armor', 'Nanocomposite Gold-Titanium Alloy · Deflection 99.8%', 3.4, -6.0, 2.8, ironmanGroup);
+    createHotspot('Sub-Orbital Boot Thruster', 'Mach 3 Flight Capability · Repulsor Propulsion', -3.4, -20.0, 3.0, ironmanGroup);
 
     mainGroup.add(ironmanGroup);
   }
@@ -548,8 +616,6 @@
     reactorGroup = new THREE.Group();
     reactorGroup.name = 'reactorGroup';
     reactorGroup.visible = false;
-
-    const p = getPalette();
 
     // Central Plasma Core Sphere
     const coreGeo = new THREE.SphereGeometry(6.5, 32, 32);
@@ -566,40 +632,24 @@
 
     // Primary Torus Confinement Coil
     const torusGeo = new THREE.TorusGeometry(14, 1.8, 16, 64);
-    const torusMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.3,
-      metalness: 0.9,
-    });
+    const torusMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.9 });
     const torus = new THREE.Mesh(torusGeo, torusMat);
     reactorGroup.add(torus);
 
-    // Ten Radial Copper Wound Segments
-    for (let i = 0; i < 10; i++) {
-      const angle = (i / 10) * Math.PI * 2;
-      const segGeo = new THREE.BoxGeometry(2.4, 5.5, 3.2);
-      const segMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.95 });
-      const segment = new THREE.Mesh(segGeo, segMat);
-      segment.position.set(Math.cos(angle) * 14, Math.sin(angle) * 14, 0);
-      segment.rotation.z = angle + Math.PI / 2;
-      reactorGroup.add(segment);
-    }
-
     // Outer Gimbals
     const gimbal1Geo = new THREE.TorusGeometry(20, 0.6, 12, 64);
-    const gimbal1Mat = new THREE.MeshBasicMaterial({ color: p.arcCyan, wireframe: true, transparent: true, opacity: 0.6 });
+    const gimbal1Mat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.6 });
     const gimbal1 = new THREE.Mesh(gimbal1Geo, gimbal1Mat);
     gimbal1.name = 'gimbal1';
     reactorGroup.add(gimbal1);
 
     const gimbal2Geo = new THREE.TorusGeometry(24, 0.5, 12, 64);
-    const gimbal2Mat = new THREE.MeshBasicMaterial({ color: p.gold, wireframe: true, transparent: true, opacity: 0.5 });
+    const gimbal2Mat = new THREE.MeshBasicMaterial({ color: PALETTE.gold, wireframe: true, transparent: true, opacity: 0.5 });
     const gimbal2 = new THREE.Mesh(gimbal2Geo, gimbal2Mat);
     gimbal2.name = 'gimbal2';
     gimbal2.rotation.x = Math.PI / 4;
     reactorGroup.add(gimbal2);
 
-    createHotspot('Plasma Confinement Field', 'Magnetic Flux: 14.2 Tesla · Superconducting', 0, 0, 8, reactorGroup);
     mainGroup.add(reactorGroup);
   }
 
@@ -610,11 +660,9 @@
     globeGroup.name = 'globeGroup';
     globeGroup.visible = false;
 
-    const p = getPalette();
-
     const globeGeo = new THREE.SphereGeometry(18, 32, 32);
     const globeMat = new THREE.MeshBasicMaterial({
-      color: p.arcCyan,
+      color: 0x00f0ff,
       wireframe: true,
       transparent: true,
       opacity: 0.4,
@@ -622,39 +670,11 @@
     const globeMesh = new THREE.Mesh(globeGeo, globeMat);
     globeGroup.add(globeMesh);
 
-    // Inner dark sphere to occlude back
     const innerGlobe = new THREE.Mesh(
       new THREE.SphereGeometry(17.6, 32, 32),
       new THREE.MeshBasicMaterial({ color: 0x050d18 })
     );
     globeGroup.add(innerGlobe);
-
-    // Key Global Beacons
-    const locations = [
-      { name: 'Stark Tower (New York)', lat: 40.71, lon: -74.0, desc: 'Primary Intelligence Hub · 10 Gbps Uplink' },
-      { name: 'Malibu Lab (California)', lat: 34.02, lon: -118.77, desc: 'R&D Fabrication · Nanotech Foundry' },
-      { name: 'Tokyo Research Center', lat: 35.67, lon: 139.65, desc: 'Quantum Neural Node · Latency 14ms' },
-      { name: 'Zurich Vault', lat: 47.37, lon: 8.54, desc: 'Encrypted Cold Storage · Zero-Knowledge' },
-    ];
-
-    locations.forEach((loc) => {
-      const phi = (90 - loc.lat) * (Math.PI / 180);
-      const theta = (loc.lon + 180) * (Math.PI / 180);
-      const radius = 18.2;
-
-      const x = -(radius * Math.sin(phi) * Math.cos(theta));
-      const z = radius * Math.sin(phi) * Math.sin(theta);
-      const y = radius * Math.cos(phi);
-
-      const pinGeo = new THREE.CylinderGeometry(0.3, 0.1, 3.5, 8);
-      const pinMat = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
-      const pin = new THREE.Mesh(pinGeo, pinMat);
-      pin.position.set(x, y, z);
-      pin.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(x, y, z).normalize());
-      globeGroup.add(pin);
-
-      createHotspot(loc.name, loc.desc, x * 1.05, y * 1.05, z * 1.05, globeGroup);
-    });
 
     mainGroup.add(globeGroup);
   }
@@ -676,10 +696,7 @@
     group.add(ring);
 
     const dotGeo = new THREE.CircleGeometry(0.4, 12);
-    const dotMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      side: THREE.DoubleSide,
-    });
+    const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
     const dot = new THREE.Mesh(dotGeo, dotMat);
     group.add(dot);
 
@@ -722,7 +739,7 @@
         prevMouseY = e.clientY;
 
         mainGroup.rotation.y += deltaX * 0.005;
-        mainGroup.rotation.x = Math.max(-0.5, Math.min(0.5, mainGroup.rotation.x + deltaY * 0.005));
+        mainGroup.rotation.x = Math.max(-0.4, Math.min(0.4, mainGroup.rotation.x + deltaY * 0.005));
       }
     });
 
@@ -754,7 +771,7 @@
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomFactor = e.deltaY * 0.04;
-      targetCamPos.z = Math.max(30, Math.min(110, targetCamPos.z + zoomFactor));
+      targetCamPos.z = Math.max(25, Math.min(95, targetCamPos.z + zoomFactor));
     }, { passive: false });
 
     // Click hotspot to show diagnostic inspect card
@@ -791,8 +808,8 @@
     if (globeGroup) globeGroup.visible = mode === 'globe';
 
     if (mode === 'ironman') {
-      targetCamPos.set(0, 5, 58);
-      targetLookAt.set(0, 6, 0);
+      targetCamPos.set(0, 2, 54);
+      targetLookAt.set(0, 1, 0);
     } else if (mode === 'reactor') {
       targetCamPos.set(0, 0, 75);
       targetLookAt.set(0, 0, 0);
@@ -813,22 +830,22 @@
 
   function setCameraPreset(preset) {
     if (preset === 'front') {
-      targetCamPos.set(0, 5, 58);
+      targetCamPos.set(0, 2, 54);
       if (mainGroup) {
         mainGroup.rotation.x = 0;
         mainGroup.rotation.y = 0;
       }
     } else if (preset === 'iso') {
-      targetCamPos.set(35, 25, 52);
+      targetCamPos.set(30, 18, 50);
     } else if (preset === 'top') {
-      targetCamPos.set(0, 65, 10);
+      targetCamPos.set(0, 55, 8);
       if (mainGroup) {
         mainGroup.rotation.x = 0;
       }
     } else if (preset === 'orbit') {
       autoRotate = !autoRotate;
     }
-    targetLookAt.set(0, 6, 0);
+    targetLookAt.set(0, 1, 0);
   }
 
   function setStarkTheme(enabled) {
@@ -838,11 +855,11 @@
   function setExplodeAmount(amount) {
     explodeAmount = amount;
 
-    // Faceplate lifts up and forward revealing the interior HUD
+    // Faceplate lifts up and forward
     if (faceplateGroup) {
-      faceplateGroup.position.z = amount * 8;
-      faceplateGroup.position.y = amount * 7;
-      faceplateGroup.rotation.x = -amount * 0.75;
+      faceplateGroup.position.z = amount * 6;
+      faceplateGroup.position.y = amount * 5;
+      faceplateGroup.rotation.x = -amount * 0.7;
     }
 
     // Chest plates slide laterally
@@ -850,12 +867,18 @@
       chestGroup.children.forEach((mesh) => {
         const norm = mesh.userData?.normal;
         if (norm) {
-          mesh.position.x = mesh.position.x + norm.x * (amount * 12 - (mesh.userData._lastExplode || 0));
-          mesh.position.y = mesh.position.y + norm.y * (amount * 12 - (mesh.userData._lastExplode || 0));
-          mesh.position.z = mesh.position.z + norm.z * (amount * 12 - (mesh.userData._lastExplode || 0));
-          mesh.userData._lastExplode = amount * 12;
+          mesh.position.x = mesh.position.x + norm.x * (amount * 8 - (mesh.userData._lastExplode || 0));
+          mesh.position.y = mesh.position.y + norm.y * (amount * 8 - (mesh.userData._lastExplode || 0));
+          mesh.position.z = mesh.position.z + norm.z * (amount * 8 - (mesh.userData._lastExplode || 0));
+          mesh.userData._lastExplode = amount * 8;
         }
       });
+    }
+
+    // Arms open slightly
+    if (leftArmGroup && rightArmGroup) {
+      leftArmGroup.position.x = -amount * 4;
+      rightArmGroup.position.x = amount * 4;
     }
   }
 
@@ -883,14 +906,14 @@
       audioPulse = Math.max(0, audioPulse - 0.02);
     }
 
-    // Auto-rotate main scene if enabled
+    // Auto-rotate if enabled
     if (autoRotate && mainGroup) {
       mainGroup.rotation.y += rotateSpeed;
     }
 
-    // ── Animate Iron Man ──
+    // ── Full-Body Iron Man Animations ──
     if (ironmanGroup && ironmanGroup.visible) {
-      // 1. Interactive Head Mouse Tracking!
+      // 1. Head tracks user mouse cursor smoothly!
       if (headGroup) {
         const targetHeadRotY = mouse.x * 0.45;
         const targetHeadRotX = -mouse.y * 0.25;
@@ -898,24 +921,33 @@
         headGroup.rotation.x += (targetHeadRotX - headGroup.rotation.x) * 0.06;
       }
 
-      // 2. Subtle Idling Chest Breathing
-      const breath = Math.sin(t * 2) * 0.02;
-      ironmanGroup.position.y = -5 + breath * 3;
+      // 2. Subtle Idling Breathing Motion
+      const breath = Math.sin(t * 2.2) * 0.15;
+      chestGroup.position.y = breath;
+      if (leftArmGroup && rightArmGroup) {
+        leftArmGroup.rotation.x = Math.sin(t * 1.8) * 0.03;
+        rightArmGroup.rotation.x = -Math.sin(t * 1.8) * 0.03;
+      }
 
-      // 3. RT Arc Reactor & Eye Emissive Pulse
+      // 3. RT Arc Reactor & Palm Repulsors Pulse
       if (chestReactorCore) {
-        const arcPulse = 1.0 + Math.sin(t * 3.5) * 0.15 + audioPulse * 0.6;
+        const arcPulse = 1.0 + Math.sin(t * 4) * 0.12 + audioPulse * 0.6;
         chestReactorCore.scale.set(arcPulse, arcPulse, 1);
       }
 
-      // 4. Floating Holographic HUD Crosshairs
+      // 4. Reticle HUD rotates
       if (hudReticle) {
-        hudReticle.rotation.z = t * 0.4;
+        hudReticle.rotation.z = t * 0.35;
       }
 
       // 5. Eye Lights Pulse
       eyeLights.forEach((light) => {
-        light.intensity = 2.5 + audioPulse * 3.5;
+        light.intensity = 2.2 + audioPulse * 3.0;
+      });
+
+      // 6. Repulsor Lights Pulse
+      repulsorLights.forEach((light) => {
+        light.intensity = 1.5 + audioPulse * 2.5;
       });
     }
 
@@ -942,7 +974,7 @@
       const positions = particleGeo.attributes.position.array;
       const count = positions.length / 3;
       for (let i = 0; i < count; i++) {
-        positions[i * 3 + 1] += Math.sin(t + i) * 0.015;
+        positions[i * 3 + 1] += Math.sin(t + i) * 0.012;
       }
       particleGeo.attributes.position.needsUpdate = true;
     }
@@ -1006,7 +1038,7 @@
     renderer.setSize(width, height);
   }
 
-  // Attach Public API to window.friday3D
+  // Public API
   window.friday3D = {
     init: init,
     setMode: setMode,

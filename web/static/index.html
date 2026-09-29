@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FRIDAY Dashboard</title>
-  <meta name="description" content="Female Replacement Intelligent Digital Assistant Youth - Interactive AI Dashboard">
-  <meta property="og:title" content="FRIDAY Dashboard">
-  <meta property="og:description" content="Female Replacement Intelligent Digital Assistant Youth - Interactive AI Dashboard">
+  <title>I.R.O.N. M.A.N. Dashboard</title>
+  <meta name="description" content="I.R.O.N. M.A.N. - Interactive 3D Mark III Armor & AI Assistant">
+  <meta property="og:title" content="I.R.O.N. M.A.N. Dashboard">
+  <meta property="og:description" content="I.R.O.N. M.A.N. - Interactive 3D Mark III Armor & AI Assistant">
   <link rel="stylesheet" href="/static/style.css">
   <!-- Local Three.js build for offline 3D WebGL rendering -->
   <script src="/static/three.min.js"></script>
@@ -27,30 +27,29 @@
       <span class="inspect-tag">TELEMETRY DIAGNOSTIC</span>
       <button class="inspect-close" id="closeInspectCard">&times;</button>
     </div>
-    <h4 id="hotspot-title">Iron Man Mark 85</h4>
+    <h4 id="hotspot-title">Iron Man Mark III</h4>
     <p id="hotspot-desc">Armor telemetry and neural diagnostics nominal.</p>
   </div>
 
   <!-- Floating Holographic HUD Interface -->
   <div class="hud-overlay">
-    <!-- Top Spatial Navigation Bar -->
+    <!-- Top Bar: Matches the reference screen layout -->
     <header class="hud-top-bar">
       <div class="hud-left-brand">
         <div class="mini-arc-reactor"></div>
         <div class="brand-text">
-          <h1><span>F</span>.R.I.D.A.Y. <span class="spatial-tag">MARK 85 3D</span></h1>
-          <span class="brand-sub">Stark Industries · Neural Spatial Engine</span>
+          <h1>I.R.O.N. M.A.N.</h1>
         </div>
       </div>
 
       <!-- 3D Hologram Switcher -->
       <div class="hologram-mode-selector">
-        <button class="mode-3d-btn active" data-mode="ironman" title="Inspect 3D Iron Man Suit">
+        <button class="mode-3d-btn active" data-mode="ironman" title="Full-Body 3D Iron Man Mark III">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          Iron Man
+          Iron Man 3D
         </button>
         <button class="mode-3d-btn" data-mode="reactor" title="Inspect Arc Reactor Core">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/></svg>
           Arc Core
         </button>
         <button class="mode-3d-btn" data-mode="globe" title="Global Satellite Telemetry">
@@ -68,89 +67,103 @@
         <button class="cam-preset-btn" data-preset="orbit" id="autoRotateBtn">Orbit</button>
       </div>
 
-      <!-- Audio Reactive Wave Visualizer & Status -->
+      <!-- Top Right: Model Badge & Status Dot -->
       <div class="hud-top-right">
-        <div class="audio-visualizer-box" title="Real-time Voice Waveform">
-          <canvas id="audioWaveCanvas" width="90" height="22"></canvas>
-        </div>
         <span class="model-badge" id="modelBadge">gemini-3.1-flash-lite</span>
         <div class="status-dot" id="statusDot" title="Live Link Active"></div>
       </div>
     </header>
 
-    <!-- Main Spatial Stage: Collapsible Left/Right Glass Panels -->
+    <!-- Main Spatial Stage: Left Panel, Center Holographic Target, Right Chat -->
     <div class="hud-workspace">
-      <!-- Left HUD: Telemetry & Diagnostic Console -->
+      <!-- Left HUD: Telemetry matching the photo -->
       <aside class="hud-panel hud-left" id="leftHud">
         <div class="panel-header">
-          <h3><span>SUIT</span> TELEMETRY</h3>
+          <h3>SYSTEM & AI ENGINE</h3>
           <button class="panel-collapse-btn" id="toggleLeftHud" title="Toggle Panel">◀</button>
         </div>
 
         <div class="panel-scroll-content">
-          <!-- Hardware Readings -->
+          <!-- SYSTEM -->
           <div class="hud-card">
-            <div class="card-title">VITAL METRICS</div>
+            <div class="card-title">SYSTEM</div>
             <div class="stat-row">
-              <span class="stat-label">CPU Compute</span>
+              <span class="stat-label">CPU</span>
               <span class="stat-value" id="cpuVal">--%</span>
             </div>
             <div class="progress-bar"><div class="progress-fill green" id="cpuBar" style="width:0%"></div></div>
 
             <div class="stat-row" style="margin-top:10px">
-              <span class="stat-label">RAM Allocated</span>
+              <span class="stat-label">RAM</span>
               <span class="stat-value" id="ramVal">--</span>
             </div>
             <div class="progress-bar"><div class="progress-fill green" id="ramBar" style="width:0%"></div></div>
 
             <div class="stat-row" style="margin-top:10px">
-              <span class="stat-label">Storage Array</span>
+              <span class="stat-label">Disk</span>
               <span class="stat-value" id="diskVal">--</span>
             </div>
             <div class="progress-bar"><div class="progress-fill green" id="diskBar" style="width:0%"></div></div>
           </div>
 
-          <!-- Spatial & Core Metrics -->
+          <!-- AI ENGINE -->
           <div class="hud-card">
-            <div class="card-title">MARK 85 SUIT INTEGRITY</div>
-            <div class="stat-row">
-              <span class="stat-label">Armor Integrity</span>
-              <span class="stat-value green" id="armorIntegrityVal">100% NOMINAL</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">RT Arc Output</span>
-              <span class="stat-value blue" id="fluxVal">10.4 GW</span>
-            </div>
+            <div class="card-title">AI ENGINE</div>
             <div class="stat-row">
               <span class="stat-label">Provider</span>
-              <span class="stat-value" id="providerVal">Google Gemini</span>
+              <span class="stat-value blue" id="providerVal">Google Gemini</span>
             </div>
             <div class="stat-row">
-              <span class="stat-label">Nanotech Subsystems</span>
-              <span class="stat-value" id="toolsVal">18 Modules</span>
+              <span class="stat-label">Tools</span>
+              <span class="stat-value" id="toolsVal">138</span>
             </div>
             <div class="stat-row">
-              <span class="stat-label">Active Uptime</span>
-              <span class="stat-value" id="uptimeVal">--</span>
+              <span class="stat-label">API Calls</span>
+              <span class="stat-value" id="callsVal">0</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Errors</span>
+              <span class="stat-value" id="errorsVal">0</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">AI Time</span>
+              <span class="stat-value" id="aiTimeVal">0s</span>
             </div>
           </div>
 
-          <!-- Operational Mode Toggles -->
+          <!-- SESSION -->
           <div class="hud-card">
-            <div class="card-title">OPERATIONAL MODES</div>
+            <div class="card-title">SESSION</div>
             <div class="stat-row">
-              <span class="stat-label">Stark Protocol</span>
-              <span class="stat-value yellow clickable" id="starkVal" title="Click to toggle Stark Mode">ENGAGED</span>
+              <span class="stat-label">Uptime</span>
+              <span class="stat-value" id="uptimeVal">--</span>
             </div>
             <div class="stat-row">
-              <span class="stat-label">Safe Confinement</span>
+              <span class="stat-label">Commands</span>
+              <span class="stat-value" id="commandsVal">0</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Version</span>
+              <span class="stat-value" id="versionVal">v5.1.0</span>
+            </div>
+          </div>
+
+          <!-- MODES -->
+          <div class="hud-card">
+            <div class="card-title">MODES</div>
+            <div class="stat-row">
+              <span class="stat-label">Stark Mode</span>
+              <span class="stat-value yellow clickable" id="starkVal" title="Click to toggle Stark Mode">STANDBY</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Safe Mode</span>
               <span class="stat-value green clickable" id="safeVal" title="Click to toggle Safe Mode">ON</span>
             </div>
           </div>
 
-          <!-- AI Model Switcher -->
+          <!-- MODEL SELECTOR -->
           <div class="hud-card">
-            <div class="card-title">NEURAL MODEL</div>
+            <div class="card-title">MODEL</div>
             <div class="toggle-group" id="modelSwitcher">
               <button class="toggle-btn active" data-model="gemini-3.1-flash-lite">Flash Lite</button>
               <button class="toggle-btn" data-model="gemini-3.8-flash">Flash 3.8</button>
@@ -158,40 +171,35 @@
               <button class="toggle-btn" data-model="smart">Smart</button>
             </div>
           </div>
-
-          <!-- Quick Action Commands -->
-          <div class="hud-card">
-            <div class="card-title">TACTICAL COMMANDS</div>
-            <div class="tool-button-group">
-              <button class="tool-btn osint-btn" data-prompt="deep search the entire internet for">OSINT Global Scan</button>
-              <button class="tool-btn chart-btn" data-prompt="Create a bar chart of sales: 10, 20, 30 with labels A, B, C">3D Bar Chart</button>
-              <button class="tool-btn chart-btn" data-prompt="Create a pie chart of market share: 40, 30, 20, 10">Pie Breakdown</button>
-              <button class="tool-btn diagram-btn" data-prompt="Draw a tree diagram of my company structure">Architecture Tree</button>
-              <button class="tool-btn ram-btn" data-text="reduce ram usage">Purge Cache & RAM</button>
-            </div>
-          </div>
         </div>
       </aside>
 
-      <!-- Center Spatial Viewport Hint Overlay -->
-      <div class="spatial-viewport-controls">
-        <div class="spatial-hint">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3"/></svg>
-          <span>Move mouse to track Iron Man head · Drag to orbit 360° · Scroll to zoom</span>
+      <!-- Center Holographic Target & Title (Matching user photo!) -->
+      <div class="center-arc-display" id="centerArcDisplay">
+        <div class="arc-target-bracket top-left"></div>
+        <div class="arc-target-bracket top-right"></div>
+        <div class="arc-target-bracket bottom-left"></div>
+        <div class="arc-target-bracket bottom-right"></div>
+
+        <div class="arc-hologram-ring">
+          <div class="arc-hologram-inner"></div>
         </div>
 
-        <!-- Explode Slider for Iron Man Armor & Faceplate -->
+        <h2 class="hero-ironman-title">I'M IRON MAN</h2>
+        <p class="hero-ironman-sub">Iron Man Mark III (Iron Man, 2008) — Autonomous 3D Armor</p>
+
+        <!-- Explode Slider for Full Body Armor -->
         <div class="explode-slider-container" id="explodeSliderContainer">
-          <label for="explodeSlider">OPEN FACEPLATE / DISASSEMBLE</label>
+          <label for="explodeSlider">ARMOR & FACEPLATE DISASSEMBLE</label>
           <input type="range" id="explodeSlider" min="0" max="1" step="0.01" value="0">
           <span id="explodeVal">0%</span>
         </div>
       </div>
 
-      <!-- Right HUD: Neural AI Chat & Voice Assistant -->
+      <!-- Right HUD: Chat & AI Interface -->
       <main class="hud-panel hud-right" id="rightHud">
         <div class="panel-header">
-          <h3><span>NEURAL</span> INTERFACE</h3>
+          <h3><span>NEURAL</span> COMM</h3>
           <div class="header-tools">
             <button class="hud-icon-btn" id="voiceToggle" title="Toggle Voice Output">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
@@ -203,32 +211,20 @@
           </div>
         </div>
 
-        <!-- Voice Settings Drawer -->
-        <div class="voice-drawer" id="voiceDrawer">
-          <div class="drawer-row">
-            <label>Voice Persona</label>
-            <select id="voiceSelect" class="hud-select"><option>Default Synthetic Voice</option></select>
-          </div>
-          <div class="drawer-row">
-            <label>Playback Rate (<span id="voiceSpeedVal">1.0x</span>)</label>
-            <input type="range" id="voiceSpeed" min="0.6" max="1.8" step="0.1" value="1.0" class="hud-slider">
-          </div>
-        </div>
-
         <!-- Chat Stream -->
         <div class="messages" id="messages">
           <div class="welcome" id="welcome">
             <div class="big-reactor"></div>
-            <h2>F.R.I.D.A.Y. & IRON MAN</h2>
-            <p>Mark 85 Nanotech Armor online. Move your cursor to see Iron Man track you in 3D space, or ask me anything to run code, diagnostic searches, and system routines.</p>
+            <h2>JARVIS & IRON MAN</h2>
+            <p>Full-Body 3D Mark III Armor online. Move your cursor to see Iron Man track you in real-time 3D, or send any command below.</p>
           </div>
         </div>
 
-        <!-- Input Bar -->
+        <!-- Input Bar (Message IRON MAN...) -->
         <div class="input-bar">
           <div class="input-wrapper">
-            <textarea id="userInput" placeholder="Ask FRIDAY or command Iron Man..." rows="1"></textarea>
-            <button class="send-btn" id="sendBtn" title="Transmit Query">&#9654;</button>
+            <textarea id="userInput" placeholder="Message IRON MAN..." rows="1"></textarea>
+            <button class="send-btn" id="sendBtn" title="Send">&#9654;</button>
           </div>
         </div>
       </main>
