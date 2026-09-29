@@ -29,21 +29,27 @@
       <aside class="sidebar">
         <!-- SYSTEM -->
         <div class="sidebar-section">
-          <h3>SYSTEM</h3>
+          <div class="section-title-row">
+            <h3>SYSTEM</h3>
+            <div class="telemetry-toggle" id="telemetryToggle" title="Toggle between Device (Your Computer) and Host Server telemetry">
+              <button class="tele-btn active" data-source="device">DEVICE</button>
+              <button class="tele-btn" data-source="host">HOST</button>
+            </div>
+          </div>
           <div class="stat-row">
-            <span class="stat-label">CPU</span>
+            <span class="stat-label">CPU <span class="stat-meta" id="cpuMeta"></span></span>
             <span class="stat-value" id="cpuVal">--%</span>
           </div>
           <div class="progress-bar"><div class="progress-fill blue" id="cpuBar" style="width:0%"></div></div>
 
           <div class="stat-row" style="margin-top:10px">
-            <span class="stat-label">RAM</span>
+            <span class="stat-label">RAM <span class="stat-meta" id="ramMeta"></span></span>
             <span class="stat-value" id="ramVal">--</span>
           </div>
           <div class="progress-bar"><div class="progress-fill green" id="ramBar" style="width:0%"></div></div>
 
           <div class="stat-row" style="margin-top:10px">
-            <span class="stat-label">Disk</span>
+            <span class="stat-label">Disk <span class="stat-meta" id="diskMeta"></span></span>
             <span class="stat-value" id="diskVal">--</span>
           </div>
           <div class="progress-bar"><div class="progress-fill green" id="diskBar" style="width:0%"></div></div>
