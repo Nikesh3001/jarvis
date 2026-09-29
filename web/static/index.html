@@ -168,19 +168,8 @@
         <div class="messages" id="messages" style="display:none;"></div>
       </section>
 
-      <!-- Right Stage: The Exact Iron Man Mark III Standing Image (Rotatable) -->
+      <!-- Right Stage: The Exact Iron Man Mark III Standing Image (Rotatable by dragging) -->
       <aside class="right-image-stage">
-        <!-- Interactive Rotation Controls Toolbar -->
-        <div class="rotation-toolbar">
-          <button class="rotate-btn" id="btnAutoRotate" title="Auto Spin Continuous 360°">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-            <span id="autoRotateText">Auto Spin</span>
-          </button>
-          <button class="rotate-btn" id="btnRotateLeft" title="Rotate Left 45°">↺ 45°</button>
-          <button class="rotate-btn" id="btnRotateRight" title="Rotate Right 45°">↻ 45°</button>
-          <button class="rotate-btn" id="btnResetRotate" title="Reset Rotation to 0°">Reset</button>
-        </div>
-
         <div class="ironman-img-wrapper" id="ironmanWrapper" title="Click and drag horizontally to rotate Iron Man 360°">
           <img src="/static/ironman-mark3.png" alt="Iron Man Mark III" class="ironman-character-img" id="ironmanImg">
           <div class="ironman-glow-backdrop"></div>
@@ -188,11 +177,6 @@
             <div class="pedestal-disc"></div>
             <div class="pedestal-ring"></div>
           </div>
-        </div>
-
-        <div class="rotation-hint">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
-          <span>Drag image to rotate 360°</span>
         </div>
       </aside>
     </div>

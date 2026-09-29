@@ -1,7 +1,8 @@
 /**
  * I.R.O.N. M.A.N. Dashboard Controller
  * Real-time Hardware Telemetry (Device & Host)
- * AI Voice Mute & Interactive 3D Image Rotation
+ * AI Voice Mute & Clean Interactive 3D Image Drag-Rotation
+ * Direct Web Launch in Chrome
  */
 
 (function () {
@@ -23,14 +24,9 @@
   const voiceIconOff = $('#voiceIconOff');
   const voiceLabel = $('#voiceLabel');
 
-  // Rotation Elements
+  // Rotation Elements (Clean Drag Rotation)
   const ironmanWrapper = $('#ironmanWrapper');
   const ironmanImg = $('#ironmanImg');
-  const btnAutoRotate = $('#btnAutoRotate');
-  const autoRotateText = $('#autoRotateText');
-  const btnRotateLeft = $('#btnRotateLeft');
-  const btnRotateRight = $('#btnRotateRight');
-  const btnResetRotate = $('#btnResetRotate');
 
   const els = {
     cpuVal: $('#cpuVal'),
@@ -63,7 +59,7 @@
   // ── AI Voice Mute System ────────────────────────────────────────────────
   function updateVoiceUI() {
     if (voiceMuted) {
-      if (synth) synth.cancel(); // Stop any currently playing audio immediately
+      if (synth) synth.cancel();
       if (voiceMuteBtn) voiceMuteBtn.classList.add('muted');
       if (voiceIconOn) voiceIconOn.style.display = 'none';
       if (voiceIconOff) voiceIconOff.style.display = 'block';
@@ -90,15 +86,12 @@
   }
   updateVoiceUI();
 
-  // ── Interactive 3D Image Rotation System ────────────────────────────────
+  // ── Clean Interactive 3D Image Drag-Rotation ─────────────────────────────
   let rotY = 0;
   let rotX = 0;
   let isDragging = false;
   let dragStartX = 0;
-  let dragStartY = 0;
   let initialRotY = 0;
-  let isAutoSpinning = false;
-  let autoSpinReqId = null;
 
   function applyRotation(smooth) {
     if (!ironmanImg) return;
@@ -106,70 +99,13 @@
     ironmanImg.style.transform = `rotateY(${rotY}deg) rotateX(${rotX}deg)`;
   }
 
-  // Auto Spin Loop
-  function autoSpinLoop() {
-    if (!isAutoSpinning) return;
-    rotY = (rotY + 0.75) % 360;
-    applyRotation(false);
-    autoSpinReqId = requestAnimationFrame(autoSpinLoop);
-  }
-
-  function toggleAutoSpin() {
-    isAutoSpinning = !isAutoSpinning;
-    if (btnAutoRotate) btnAutoRotate.classList.toggle('active', isAutoSpinning);
-    if (autoRotateText) autoRotateText.textContent = isAutoSpinning ? 'Stop Spin' : 'Auto Spin';
-
-    if (isAutoSpinning) {
-      autoSpinLoop();
-    } else if (autoSpinReqId) {
-      cancelAnimationFrame(autoSpinReqId);
-    }
-  }
-
-  if (btnAutoRotate) btnAutoRotate.addEventListener('click', toggleAutoSpin);
-
-  if (btnRotateLeft) {
-    btnRotateLeft.addEventListener('click', () => {
-      isAutoSpinning = false;
-      if (btnAutoRotate) btnAutoRotate.classList.remove('active');
-      if (autoRotateText) autoRotateText.textContent = 'Auto Spin';
-      rotY = (rotY - 45) % 360;
-      rotX = 0;
-      applyRotation(true);
-    });
-  }
-
-  if (btnRotateRight) {
-    btnRotateRight.addEventListener('click', () => {
-      isAutoSpinning = false;
-      if (btnAutoRotate) btnAutoRotate.classList.remove('active');
-      if (autoRotateText) autoRotateText.textContent = 'Auto Spin';
-      rotY = (rotY + 45) % 360;
-      rotX = 0;
-      applyRotation(true);
-    });
-  }
-
-  if (btnResetRotate) {
-    btnResetRotate.addEventListener('click', () => {
-      isAutoSpinning = false;
-      if (btnAutoRotate) btnAutoRotate.classList.remove('active');
-      if (autoRotateText) autoRotateText.textContent = 'Auto Spin';
-      rotY = 0;
-      rotX = 0;
-      applyRotation(true);
-    });
-  }
-
-  // Mouse & Touch Dragging on Iron Man Image
   if (ironmanWrapper) {
+    // Mouse Drag
     ironmanWrapper.addEventListener('mousedown', (e) => {
       isDragging = true;
       dragStartX = e.clientX;
-      dragStartY = e.clientY;
       initialRotY = rotY;
       ironmanWrapper.classList.add('dragging');
-      if (isAutoSpinning) toggleAutoSpin();
     });
 
     window.addEventListener('mouseup', () => {
@@ -182,12 +118,10 @@
     window.addEventListener('mousemove', (e) => {
       if (isDragging) {
         const deltaX = e.clientX - dragStartX;
-        rotY = (initialRotY + deltaX * 0.8) % 360;
+        rotY = (initialRotY + deltaX * 0.85) % 360;
         applyRotation(false);
-      } else if (ironmanWrapper.matches(':hover') && !isAutoSpinning) {
-        // Subtle 3D cursor tracking tilt
+      } else if (ironmanWrapper.matches(':hover')) {
         const rect = ironmanWrapper.getBoundingClientRect();
-        const normX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const normY = ((e.clientY - rect.top) / rect.height) * 2 - 1;
         rotX = -normY * 6;
         applyRotation(false);
@@ -195,19 +129,18 @@
     });
 
     ironmanWrapper.addEventListener('mouseleave', () => {
-      if (!isDragging && !isAutoSpinning) {
+      if (!isDragging) {
         rotX = 0;
         applyRotation(true);
       }
     });
 
-    // Touch Support for Mobile
+    // Touch Drag (Mobile)
     ironmanWrapper.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
         isDragging = true;
         dragStartX = e.touches[0].clientX;
         initialRotY = rotY;
-        if (isAutoSpinning) toggleAutoSpin();
       }
     }, { passive: true });
 
@@ -222,6 +155,244 @@
         applyRotation(false);
       }
     }, { passive: true });
+  }
+
+  // ── URL & Website Detection (Opens Directly in Chrome) ───────────────────
+  function extractOpenUrl(text) {
+    const shortcuts = {
+      youtube: 'https://youtube.com',
+      google: 'https://google.com',
+      github: 'https://github.com',
+      reddit: 'https://reddit.com',
+      twitter: 'https://x.com',
+      x: 'https://x.com',
+      facebook: 'https://facebook.com',
+      instagram: 'https://instagram.com',
+      chatgpt: 'https://chat.openai.com',
+      netflix: 'https://netflix.com',
+      wikipedia: 'https://wikipedia.org',
+      linkedin: 'https://linkedin.com',
+      amazon: 'https://amazon.com',
+    };
+
+    // Explicit open patterns
+    const matchExplicit = text.match(/(?:open|launch|browse to|navigate to|go to)\s+(?:website\s+|site\s+)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/i);
+    if (matchExplicit && matchExplicit[1]) {
+      const u = matchExplicit[1];
+      return u.startsWith('http') ? u : `https://${u}`;
+    }
+
+    const matchNamed = text.match(/(?:open|launch|browse to|go to)\s+(youtube|google|github|reddit|twitter|x|facebook|instagram|chatgpt|netflix|wikipedia|linkedin|amazon)/i);
+    if (matchNamed && matchNamed[1]) {
+      const name = matchNamed[1].toLowerCase();
+      if (shortcuts[name]) return shortcuts[name];
+    }
+
+    // Direct URLs in message
+    const matchHttp = text.match(/https?:\/\/[^\s]+/i);
+    if (matchHttp) return matchHttp[0];
+
+    return null;
+  }
+
+  function launchUrlInChrome(url) {
+    try {
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (win) {
+        win.focus();
+        return true;
+      }
+    } catch (e) {
+      console.warn('Window open caught:', e);
+    }
+    return false;
+  }
+
+  // ── Markdown Parser with Cyber Launch Cards ─────────────────────────────
+  function renderMarkdown(md) {
+    let out = md
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    out = out.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => {
+      return `<pre style="background:rgba(0,0,0,0.6);padding:8px;border-radius:6px;margin:6px 0;font-family:var(--font-mono);font-size:11px;overflow-x:auto;"><code>${code.trim()}</code></pre>`;
+    });
+
+    out = out.replace(/`([^`]+)`/g, '<code style="color:var(--accent-cyan);font-family:var(--font-mono);">$1</code>');
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // Convert markdown links [title](url) to styled glowing button links
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, title, url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="web-launch-card">🌐 <strong>${title}</strong> <span style="font-size:10px;opacity:0.8;margin-left:4px;">↗</span></a>`;
+    });
+
+    out = out.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+    return out;
+  }
+
+  function addMessage(role, text) {
+    if (messagesEl) messagesEl.style.display = 'flex';
+
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
+
+    const label = document.createElement('span');
+    label.className = 'message-label';
+    label.textContent = role === 'user' ? 'Operator' : 'IRON MAN';
+    msg.appendChild(label);
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = renderMarkdown(text);
+    msg.appendChild(bubble);
+
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return bubble;
+  }
+
+  function speak(text) {
+    if (voiceMuted || !synth) return;
+    synth.cancel();
+
+    const clean = text
+      .replace(/```[\s\S]*?```/g, 'Code block omitted.')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/[*#_~>]/g, '')
+      .trim();
+
+    if (!clean) return;
+
+    const utter = new SpeechSynthesisUtterance(clean);
+    utter.rate = 1.05;
+    synth.speak(utter);
+  }
+
+  // ── WebSocket & Chat ─────────────────────────────────────────────────────
+  function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${proto}//${location.host}/ws/chat`;
+
+    try {
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        if (statusDot) {
+          statusDot.style.background = 'var(--green)';
+          statusDot.style.boxShadow = '0 0 8px var(--green)';
+        }
+      };
+
+      ws.onclose = () => {
+        if (statusDot) {
+          statusDot.style.background = 'var(--yellow)';
+          statusDot.style.boxShadow = '0 0 8px var(--yellow)';
+        }
+        setTimeout(connectWS, 3000);
+      };
+
+      let streamingBubble = null;
+      let streamedContent = '';
+
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+
+          if (data.type === 'token') {
+            if (!streamingBubble) {
+              streamingBubble = addMessage('assistant', '');
+            }
+            streamedContent += data.content;
+            streamingBubble.innerHTML = renderMarkdown(streamedContent);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          } else if (data.type === 'done') {
+            if (streamingBubble) {
+              streamingBubble.innerHTML = renderMarkdown(streamedContent || data.content);
+            } else {
+              addMessage('assistant', data.content);
+            }
+            if (!voiceMuted) speak(streamedContent || data.content);
+            streamingBubble = null;
+            streamedContent = '';
+            resetSend();
+          } else if (data.type === 'error') {
+            addMessage('assistant', `Notice: ${data.content}`);
+            streamingBubble = null;
+            streamedContent = '';
+            resetSend();
+          }
+        } catch {
+          // ignore
+        }
+      };
+    } catch {
+      // ws fallback
+    }
+  }
+
+  async function sendMessage() {
+    const text = (inputEl.value || '').trim();
+    if (!text || sending) return;
+
+    // Check for mute shortcut
+    if (text.toLowerCase() === 'mute' || text.toLowerCase() === '/mute') {
+      toggleVoiceMute();
+      inputEl.value = '';
+      return;
+    }
+
+    // Direct Browser-level Web Navigation in Chrome (User Gesture!)
+    const detectedUrl = extractOpenUrl(text);
+    if (detectedUrl) {
+      launchUrlInChrome(detectedUrl);
+    }
+
+    sending = true;
+    sendBtn.disabled = true;
+    addMessage('user', text);
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+
+    clientCpuPercent = Math.min(88, clientCpuPercent + 25);
+    renderTelemetry();
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ message: text }));
+        return;
+      } catch {
+        // Fallback to REST
+      }
+    }
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        addMessage('assistant', data.response);
+        if (!voiceMuted) speak(data.response);
+      } else {
+        addMessage('assistant', `Notice: ${data.error}`);
+      }
+    } catch (e) {
+      addMessage('assistant', `Transmission interrupted: ${e.message}`);
+    } finally {
+      resetSend();
+    }
+  }
+
+  function resetSend() {
+    sending = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+    fetchStats();
   }
 
   // ── Client Device Real-Time Metrics Engine ──────────────────────────────
@@ -311,180 +482,6 @@
         console.error(e);
       }
     });
-  }
-
-  // ── Markdown Parser ──────────────────────────────────────────────────────
-  function renderMarkdown(md) {
-    let out = md
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    out = out.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => {
-      return `<pre style="background:rgba(0,0,0,0.6);padding:8px;border-radius:6px;margin:6px 0;font-family:var(--font-mono);font-size:11px;overflow-x:auto;"><code>${code.trim()}</code></pre>`;
-    });
-
-    out = out.replace(/`([^`]+)`/g, '<code style="color:var(--accent-cyan);font-family:var(--font-mono);">$1</code>');
-    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    out = out.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
-    return out;
-  }
-
-  function addMessage(role, text) {
-    if (messagesEl) messagesEl.style.display = 'flex';
-
-    const msg = document.createElement('div');
-    msg.className = `message ${role}`;
-
-    const label = document.createElement('span');
-    label.className = 'message-label';
-    label.textContent = role === 'user' ? 'Operator' : 'IRON MAN';
-    msg.appendChild(label);
-
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    bubble.innerHTML = renderMarkdown(text);
-    msg.appendChild(bubble);
-
-    messagesEl.appendChild(msg);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    return bubble;
-  }
-
-  function speak(text) {
-    if (voiceMuted || !synth) return;
-    synth.cancel();
-
-    const clean = text
-      .replace(/```[\s\S]*?```/g, 'Code block omitted.')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/[*#_~>]/g, '')
-      .trim();
-
-    if (!clean) return;
-
-    const utter = new SpeechSynthesisUtterance(clean);
-    utter.rate = 1.05;
-    synth.speak(utter);
-  }
-
-  // ── WebSocket & Chat ─────────────────────────────────────────────────────
-  function connectWS() {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//${location.host}/ws/chat`;
-
-    try {
-      ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        if (statusDot) {
-          statusDot.style.background = 'var(--green)';
-          statusDot.style.boxShadow = '0 0 8px var(--green)';
-        }
-      };
-
-      ws.onclose = () => {
-        if (statusDot) {
-          statusDot.style.background = 'var(--yellow)';
-          statusDot.style.boxShadow = '0 0 8px var(--yellow)';
-        }
-        setTimeout(connectWS, 3000);
-      };
-
-      let streamingBubble = null;
-      let streamedContent = '';
-
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-
-          if (data.type === 'token') {
-            if (!streamingBubble) {
-              streamingBubble = addMessage('assistant', '');
-            }
-            streamedContent += data.content;
-            streamingBubble.innerHTML = renderMarkdown(streamedContent);
-            messagesEl.scrollTop = messagesEl.scrollHeight;
-          } else if (data.type === 'done') {
-            if (streamingBubble) {
-              streamingBubble.innerHTML = renderMarkdown(streamedContent || data.content);
-            } else {
-              addMessage('assistant', data.content);
-            }
-            if (!voiceMuted) speak(streamedContent || data.content);
-            streamingBubble = null;
-            streamedContent = '';
-            resetSend();
-          } else if (data.type === 'error') {
-            addMessage('assistant', `Notice: ${data.content}`);
-            streamingBubble = null;
-            streamedContent = '';
-            resetSend();
-          }
-        } catch {
-          // ignore
-        }
-      };
-    } catch {
-      // ws fallback
-    }
-  }
-
-  async function sendMessage() {
-    const text = (inputEl.value || '').trim();
-    if (!text || sending) return;
-
-    // Check for mute shortcut
-    if (text.toLowerCase() === 'mute' || text.toLowerCase() === '/mute') {
-      toggleVoiceMute();
-      inputEl.value = '';
-      return;
-    }
-
-    sending = true;
-    sendBtn.disabled = true;
-    addMessage('user', text);
-    inputEl.value = '';
-    inputEl.style.height = 'auto';
-
-    clientCpuPercent = Math.min(88, clientCpuPercent + 25);
-    renderTelemetry();
-
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify({ message: text }));
-        return;
-      } catch {
-        // Fallback to REST
-      }
-    }
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        addMessage('assistant', data.response);
-        if (!voiceMuted) speak(data.response);
-      } else {
-        addMessage('assistant', `Notice: ${data.error}`);
-      }
-    } catch (e) {
-      addMessage('assistant', `Transmission interrupted: ${e.message}`);
-    } finally {
-      resetSend();
-    }
-  }
-
-  function resetSend() {
-    sending = false;
-    sendBtn.disabled = false;
-    inputEl.focus();
-    fetchStats();
   }
 
   // ── Real-Time Telemetry Rendering ────────────────────────────────────────
@@ -630,7 +627,7 @@
   // ── Keyboard & Escape Shortcuts ──────────────────────────────────────────
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (synth) synth.cancel(); // Stop talking on Escape
+      if (synth) synth.cancel();
     }
   });
 

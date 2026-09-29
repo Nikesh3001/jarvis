@@ -318,6 +318,34 @@ function generateFridayLocalResponse(message: string): string {
     return `Memory optimization routine executed.\n\n- **Garbage Collection**: Completed\n- **Inactive Buffers Cleared**: 142 MB reclaimed\n- **Current RAM Usage**: ${mem.percent}% (${mem.usedGb} GB / ${mem.totalGb} GB)\n- **Status**: Nominal. System responsiveness at 99.4%.`;
   }
 
+  // Open website in Chrome
+  if (lower.startsWith('open ') || lower.includes('in chrome') || lower.includes('open website') || lower.startsWith('browse to') || lower.startsWith('go to')) {
+    const urlMatch = message.match(/https?:\/\/[^\s]+/i) || message.match(/(?:open|launch|browse to|go to)\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/i) || message.match(/(?:open|launch)\s+(youtube|google|github|reddit|twitter|x|facebook|instagram|chatgpt|netflix|wikipedia|linkedin|amazon)/i);
+    if (urlMatch) {
+      let dest = urlMatch[1] || urlMatch[0];
+      const shortcuts: Record<string, string> = {
+        youtube: 'https://youtube.com',
+        google: 'https://google.com',
+        github: 'https://github.com',
+        reddit: 'https://reddit.com',
+        twitter: 'https://x.com',
+        x: 'https://x.com',
+        facebook: 'https://facebook.com',
+        instagram: 'https://instagram.com',
+        chatgpt: 'https://chat.openai.com',
+        netflix: 'https://netflix.com',
+        wikipedia: 'https://wikipedia.org',
+        linkedin: 'https://linkedin.com',
+        amazon: 'https://amazon.com',
+      };
+      if (shortcuts[dest.toLowerCase()]) {
+        dest = shortcuts[dest.toLowerCase()];
+      }
+      const targetUrl = dest.startsWith('http') ? dest : `https://${dest}`;
+      return `### Launching Web Portal\nOpening **${dest}** in your Chrome browser.\n\n🌐 **Target URL**: [${targetUrl}](${targetUrl})\n\n*(If your browser prevented the popup, click the link above or use the launch button to open immediately.)*`;
+    }
+  }
+
   // Quick action: Bar chart
   if (lower.includes('bar chart')) {
     return `### Sales Performance Analysis\n\n\`\`\`text\nA [██████████] 10 units\nB [████████████████████] 20 units\nC [██████████████████████████████] 30 units\n\`\`\`\n\n**Summary**:\n- **Category C** leads with 50% of the overall distribution.\n- Total volume: **60 units** across all three tiers.\n- Steady upward trajectory observed.`;
@@ -387,6 +415,7 @@ async function handleChatStream(
       try {
         const systemInstruction = `You are FRIDAY — a world-class polyglot coding AI and Stark Industries digital assistant.
 You have mastery of all programming languages, algorithms, data structures, and system design.
+When the user asks to open a website, browse to a site, or open a URL in Chrome (e.g. "open youtube", "open google.com", "open github.com"), provide the direct URL (e.g. https://youtube.com) and confirm that you are launching it in their browser.
 Be direct, razor-sharp, and concise. Use clean markdown. Avoid fluff and unnecessary preamble.`;
 
         const responseStream = await aiClient.models.generateContentStream({
