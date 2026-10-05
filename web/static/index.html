@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>I.R.O.N. M.A.N. Dashboard</title>
+  <meta name="description" content="I.R.O.N. M.A.N. - Intelligent Robotic Operations & Neural Machine Assistant Network">
+  <meta property="og:title" content="I.R.O.N. M.A.N. Dashboard">
+  <meta property="og:description" content="I.R.O.N. M.A.N. - Intelligent Robotic Operations & Neural Machine Assistant Network">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="ironman-app">
+  <div class="layout-container">
+    <!-- Header: Matches reference screenshot -->
+    <header class="header">
+      <div class="header-left">
+        <div class="reactor-icon"></div>
+        <h1>I.R.O.N. M.A.N.</h1>
+      </div>
+      <div class="header-right">
+        <!-- AI Voice Mute Button -->
+        <button class="voice-mute-btn" id="voiceMuteBtn" title="Toggle AI Voice / Stop Speaking">
+          <svg class="voice-icon-on" id="voiceIconOn" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+          <svg class="voice-icon-off" id="voiceIconOff" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+            <line x1="1" y1="1" x2="23" y2="23"/>
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          </svg>
+          <span class="voice-label" id="voiceLabel">VOICE ON</span>
+        </button>
+
+        <span class="model-badge" id="modelBadge">gemini-3.1-flash-lite</span>
+        <div class="status-dot" id="statusDot" title="Online"></div>
+      </div>
+    </header>
+
+    <!-- Main Grid: Sidebar + Center Stage + Right Iron Man Image -->
+    <div class="main-body">
+      <!-- Left Sidebar: Vital Telemetry & AI Stats -->
+      <aside class="sidebar">
+        <!-- SYSTEM -->
+        <div class="sidebar-section">
+          <div class="section-title-row">
+            <h3>SYSTEM</h3>
+            <div class="telemetry-toggle" id="telemetryToggle" title="Toggle between Device (Your Computer) and Host Server telemetry">
+              <button class="tele-btn active" data-source="device">DEVICE</button>
+              <button class="tele-btn" data-source="host">HOST</button>
+            </div>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">CPU <span class="stat-meta" id="cpuMeta"></span></span>
+            <span class="stat-value" id="cpuVal">--%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill blue" id="cpuBar" style="width:0%"></div></div>
+
+          <div class="stat-row" style="margin-top:10px">
+            <span class="stat-label">RAM <span class="stat-meta" id="ramMeta"></span></span>
+            <span class="stat-value" id="ramVal">--</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill green" id="ramBar" style="width:0%"></div></div>
+
+          <div class="stat-row" style="margin-top:10px">
+            <span class="stat-label">Disk <span class="stat-meta" id="diskMeta"></span></span>
+            <span class="stat-value" id="diskVal">--</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill green" id="diskBar" style="width:0%"></div></div>
+        </div>
+
+        <!-- AI ENGINE -->
+        <div class="sidebar-section">
+          <h3>AI ENGINE</h3>
+          <div class="stat-row">
+            <span class="stat-label">Provider</span>
+            <span class="stat-value blue" id="providerVal">Google Gemini</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Tools</span>
+            <span class="stat-value" id="toolsVal">138</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">API Calls</span>
+            <span class="stat-value" id="callsVal">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Errors</span>
+            <span class="stat-value" id="errorsVal">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">AI Time</span>
+            <span class="stat-value" id="aiTimeVal">0s</span>
+          </div>
+        </div>
+
+        <!-- SESSION -->
+        <div class="sidebar-section">
+          <h3>SESSION</h3>
+          <div class="stat-row">
+            <span class="stat-label">Uptime</span>
+            <span class="stat-value" id="uptimeVal">--</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Commands</span>
+            <span class="stat-value" id="commandsVal">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Version</span>
+            <span class="stat-value" id="versionVal">v5.1.0</span>
+          </div>
+        </div>
+
+        <!-- MODES -->
+        <div class="sidebar-section">
+          <h3>MODES</h3>
+          <div class="stat-row">
+            <span class="stat-label">Stark Mode</span>
+            <span class="stat-value yellow clickable" id="starkVal" title="Click to toggle Stark Mode">STANDBY</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Safe Mode</span>
+            <span class="stat-value green clickable" id="safeVal" title="Click to toggle Safe Mode">ON</span>
+          </div>
+        </div>
+
+        <!-- MODEL SWITCHER -->
+        <div class="sidebar-section">
+          <h3>MODEL</h3>
+          <div class="model-toggle-group" id="modelSwitcher">
+            <button class="model-btn active" data-model="gemini-3.1-flash-lite">Flash Lite</button>
+            <button class="model-btn" data-model="gemini-3.8-flash">Flash 3.8</button>
+            <button class="model-btn" data-model="fast">Fast</button>
+            <button class="model-btn" data-model="smart">Smart</button>
+          </div>
+        </div>
+
+        <!-- QUICK TOOLS -->
+        <div class="sidebar-section">
+          <h3>QUICK ACTIONS</h3>
+          <div class="action-buttons">
+            <button class="tool-btn" data-prompt="deep search the web for ">OSINT Scan</button>
+            <button class="tool-btn" data-prompt="Create a bar chart of sales: 10, 20, 30 with labels A, B, C">Bar Chart</button>
+            <button class="tool-btn" data-text="reduce ram usage">Purge RAM</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Attraction: 3D J.A.R.V.I.S. Hologram Background + Chat Stream -->
+      <section class="center-content main-attraction-stage">
+        <!-- 3D Volumetric J.A.R.V.I.S. Holographic Background (Movie-Accurate) -->
+        <div class="jarvis-holo-bg-wrapper" id="jarvisHoloContainer" title="Click & drag anywhere to rotate 360° on all sides. Right-click or Shift-drag to roll. Scroll to zoom.">
+          <canvas id="jarvisHoloCanvas" class="jarvis-holo-canvas"></canvas>
+          <div class="holo-ambient-flare"></div>
+        </div>
+
+        <!-- Floating Avengers Hologram Hint Pill -->
+        <div class="avengers-hud-hint" id="avengersHudHint" title="7 Avengers are orbiting inside the 3D core. Click any hero to open their dossier!">
+          <span class="avengers-icon">⭐</span>
+          <span>AVENGERS DATABASE ACTIVE: CLICK ANY HERO INSIDE CORE</span>
+        </div>
+
+        <!-- Chat Stream (Floats cleanly over the 3D Hologram) -->
+        <div class="messages" id="messages" style="display:none;"></div>
+      </section>
+    </div>
+
+    <!-- Marvel Avengers Holographic Dossier Modal (Stark Archives Protocol) -->
+    <div class="avenger-dossier-modal" id="avengerDossierModal" style="display: none;">
+      <div class="avenger-dossier-backdrop" id="avengerDossierBackdrop"></div>
+      <div class="avenger-dossier-window">
+        <!-- Top HUD Header -->
+        <div class="dossier-header">
+          <div class="dossier-title-box">
+            <span class="dossier-badge">STARK INDUSTRIES // S.H.I.E.L.D. PROTOCOL // AVENGERS INITIATIVE</span>
+            <h2 id="dossierHeroName">TONY STARK // IRON MAN</h2>
+          </div>
+          <div class="dossier-header-actions">
+            <span class="dossier-status-pill" id="dossierStatusPill">ACTIVE PROTOCOL</span>
+            <button type="button" class="dossier-close-btn" id="dossierCloseBtn" title="Close Dossier">✕</button>
+          </div>
+        </div>
+
+        <!-- Main Dossier Content Grid -->
+        <div class="dossier-body">
+          <!-- Left Column: Holographic Avatar & Stats -->
+          <div class="dossier-visual-panel">
+            <div class="dossier-avatar-wrapper" id="dossierAvatarWrap">
+              <canvas id="dossierAvatarCanvas" width="220" height="220"></canvas>
+              <div class="dossier-arc-reticle"></div>
+            </div>
+
+            <div class="dossier-quick-meta">
+              <div class="dossier-meta-row">
+                <span class="meta-label">CODENAME:</span>
+                <span class="meta-val" id="dossierAlias">INVINCIBLE IRON MAN</span>
+              </div>
+              <div class="dossier-meta-row">
+                <span class="meta-label">CLEARANCE:</span>
+                <span class="meta-val highlight" id="dossierClearance">LEVEL 9 PRIME</span>
+              </div>
+              <div class="dossier-meta-row">
+                <span class="meta-label">THREAT LEVEL:</span>
+                <span class="meta-val threat" id="dossierThreat">ALPHA (LEVEL 10)</span>
+              </div>
+              <div class="dossier-meta-row">
+                <span class="meta-label">AFFILIATION:</span>
+                <span class="meta-val" id="dossierAffiliation">AVENGERS / STARK IND.</span>
+              </div>
+              <div class="dossier-meta-row">
+                <span class="meta-label">SUIT / TECH:</span>
+                <span class="meta-val" id="dossierSuit">MARK LXXXV (NANOTECH)</span>
+              </div>
+            </div>
+
+            <button type="button" class="dossier-voice-btn" id="dossierVoiceBtn">
+              <span class="pulse-sound-icon">🔊</span>
+              <span>J.A.R.V.I.S. AUDIO BRIEFING</span>
+            </button>
+          </div>
+
+          <!-- Right Column: Specs, Tactical Attributes & Bio -->
+          <div class="dossier-intel-panel">
+            <!-- Tactical Power Matrix -->
+            <div class="dossier-section">
+              <div class="section-title">TACTICAL POWER & COMBAT MATRIX</div>
+              <div class="stat-bars-grid" id="dossierStatBars">
+                <!-- Dynamically rendered stat bars -->
+              </div>
+            </div>
+
+            <!-- Weaponry & Technology Loadout -->
+            <div class="dossier-section">
+              <div class="section-title">PRIMARY EQUIPMENT & LOADOUT</div>
+              <ul class="dossier-equipment-list" id="dossierEquipmentList"></ul>
+            </div>
+
+            <!-- Historical Operations & Intelligence -->
+            <div class="dossier-section">
+              <div class="section-title">INTELLIGENCE & MISSION OPERATIONAL RECORD</div>
+              <p class="dossier-bio-text" id="dossierBioText"></p>
+            </div>
+
+            <!-- Key Accomplishments -->
+            <div class="dossier-section">
+              <div class="section-title">KEY STRATEGIC FEATS</div>
+              <ul class="dossier-feats-list" id="dossierFeatsList"></ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Switch Roster Bar -->
+        <div class="dossier-roster-bar" id="dossierRosterBar">
+          <!-- Quick Avenger pill buttons to toggle between heroes -->
+        </div>
+      </div>
+    </div>
+
+    <!-- In-App Holographic HUD Browser Window -->
+    <div class="hud-browser-modal" id="hudBrowserModal" style="display:none;">
+      <div class="hud-browser-window">
+        <div class="hud-browser-header">
+          <div class="hud-browser-dots">
+            <span class="hud-dot red" id="hudCloseBtn" title="Close Window"></span>
+            <span class="hud-dot yellow" id="hudMinBtn" title="Minimize"></span>
+            <span class="hud-dot green" id="hudMaxBtn" title="Maximize"></span>
+          </div>
+          <div class="hud-browser-url-bar">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span class="hud-url-text" id="hudUrlText">https://...</span>
+          </div>
+          <div class="hud-browser-actions">
+            <a href="#" id="hudPopoutLink" target="_blank" rel="noopener noreferrer" class="hud-action-btn" title="Open in new Chrome Tab">
+              <span>Open in Chrome Tab ↗</span>
+            </a>
+            <button class="hud-action-btn close" id="hudCloseBtn2">✕</button>
+          </div>
+        </div>
+        <div class="hud-browser-body">
+          <iframe id="hudIframe" src="about:blank" frameborder="0" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+          <div class="hud-fallback-overlay" id="hudFallbackOverlay" style="display:none;">
+            <div class="hud-fallback-content">
+              <div class="hud-fallback-icon">🌐</div>
+              <h3>Web Target Loaded</h3>
+              <p>To view this site outside the AI Studio frame, click below to open directly in Chrome:</p>
+              <a href="#" id="hudFallbackLink" target="_blank" rel="noopener noreferrer" class="launch-action-btn">
+                <span>LAUNCH IN CHROME TAB ↗</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ChatGPT-Style Live Voice Mode HUD (Hands-Free Man-to-Man Conversation) -->
+    <div class="live-voice-hud" id="liveVoiceHud" style="display: none;">
+      <div class="voice-hud-indicator">
+        <div class="voice-hud-ripple ripple-1"></div>
+        <div class="voice-hud-ripple ripple-2"></div>
+        <div class="voice-hud-dot"></div>
+      </div>
+      <div class="voice-hud-meta">
+        <span class="voice-hud-status" id="voiceHudStatus">LISTENING</span>
+        <span class="voice-hud-sub" id="voiceHudSub">Speak freely — J.A.R.V.I.S. is listening...</span>
+      </div>
+      <button type="button" class="voice-hud-exit" id="voiceHudExit" title="Exit Live Voice Mode">✕ EXIT VOICE</button>
+    </div>
+
+    <!-- Bottom Input Bar: Message IRON MAN... with Mic & Live Voice -->
+    <footer class="bottom-input-bar">
+      <div class="input-container">
+        <button type="button" class="voice-mode-trigger-btn" id="voiceModeBtn" title="Launch Hands-Free Voice Mode (ChatGPT style man-to-man conversation)">
+          <span class="voice-mode-badge-dot"></span>
+          <span class="voice-mode-title">LIVE VOICE</span>
+        </button>
+        <textarea id="userInput" placeholder="Message IRON MAN or tap mic to talk..." rows="1"></textarea>
+        <button type="button" class="mic-btn" id="micBtn" title="Voice Input (Speech-to-Text)">
+          <svg class="mic-svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+        <button class="send-btn" id="sendBtn" title="Send Message">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/static/three.min.js"></script>
+  <script src="/static/jarvis-hologram.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
